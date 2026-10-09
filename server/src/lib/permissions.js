@@ -13,6 +13,7 @@ const GRANTS = {
   'maintenance:write': ['admin', 'manager', 'technician'],
   'users:read': ['admin', 'manager'],
   'users:manage': ['admin'],
+  'settings:manage': ['admin'],
 };
 
 export const PERMISSIONS = Object.keys(GRANTS);

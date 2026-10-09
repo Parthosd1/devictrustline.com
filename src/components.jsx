@@ -1,5 +1,6 @@
 import React, { cloneElement, useEffect, useId } from 'react';
 import { AlertTriangle, Laptop, Monitor, Package, Printer, ScanLine, Smartphone, X } from 'lucide-react';
+import { downloadRows } from './csv.js';
 
 const TYPE_ICONS = {
   Laptop, Desktop: Monitor, Workstation: Monitor, Monitor, Scanner: ScanLine, Printer, Phone: Smartphone, Tablet: Smartphone,
@@ -83,23 +84,10 @@ export function AssetTable({ assets, onSelect, loading }) {
 }
 
 export function downloadCSV(assets, filename = 'devicetrustline-assets.csv') {
-  const cols = [
+  downloadRows(filename, [
     ['assetTag', 'Asset tag'], ['name', 'Name'], ['type', 'Type'], ['serial', 'Serial'],
     ['manufacturer', 'Manufacturer'], ['model', 'Model'], ['buildingName', 'Building'],
-    ['locationName', 'Location'], ['parentTag', 'Part of'], ['assignedPersonName', 'Assigned to'], ['status', 'Status'], ['purchaseDate', 'Purchase date'],
-    ['warrantyExpires', 'Warranty expires'],
-  ];
-  const cell = (v) => {
-    let s = String(v ?? '');
-    // Stop spreadsheet apps from treating cell text as a formula.
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-    return `"${s.replaceAll('"', '""')}"`;
-  };
-  const csv = [cols.map(([, h]) => cell(h)).join(','), ...assets.map((a) => cols.map(([k]) => cell(a[k])).join(','))].join('\n');
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  const el = document.createElement('a');
-  el.href = url;
-  el.download = filename;
-  el.click();
-  URL.revokeObjectURL(url);
+    ['locationName', 'Location'], ['parentTag', 'Part of'], ['assignedPersonName', 'Assigned to'], ['status', 'Status'],
+    ['purchaseDate', 'Purchase date'], ['warrantyExpires', 'Warranty expires'], ['notes', 'Notes'],
+  ], assets);
 }

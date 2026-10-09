@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Boxes, Building2, ChevronRight, ClipboardCheck, Contact, LayoutDashboard, LogOut, Menu, Plus, ScanLine, Users as UsersIcon, Wrench,
+  Boxes, Building2, ChevronRight, ClipboardCheck, Contact, BarChart3, LayoutDashboard, LogOut, Menu, Plus, ScanLine, Settings as SettingsIcon, Users as UsersIcon, Wrench,
 } from 'lucide-react';
 import { api } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -14,7 +14,9 @@ import { Dashboard } from './pages/Dashboard.jsx';
 import { Inventory } from './pages/Inventory.jsx';
 import { Maintenance } from './pages/Maintenance.jsx';
 import { People } from './pages/People.jsx';
+import { Reports } from './pages/Reports.jsx';
 import { Scan } from './pages/Scan.jsx';
+import { Settings } from './pages/Settings.jsx';
 import { Users } from './pages/Users.jsx';
 
 const PAGES = {
@@ -25,7 +27,9 @@ const PAGES = {
   Buildings: { icon: Building2, title: 'Buildings', blurb: 'A clear view of your equipment by facility and location.' },
   People: { icon: Contact, title: 'People', blurb: 'Employees and staff who can be assigned equipment.' },
   Maintenance: { icon: Wrench, title: 'Maintenance', blurb: 'Track repairs from report to resolution, with cost and history.' },
+  Reports: { icon: BarChart3, title: 'Reports', blurb: 'Inventory, warranty, maintenance and audit reporting, with CSV downloads.' },
   Users: { icon: UsersIcon, title: 'Users', blurb: 'Who can sign in to this workspace, and what they can do.', permission: 'users:read' },
+  Settings: { icon: SettingsIcon, title: 'Settings', blurb: 'Workspace automation and your account.' },
 };
 
 const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
@@ -122,13 +126,15 @@ export function App() {
           </div>
           <ErrorBanner error={error} />
           {page === 'Dashboard' && <Dashboard assets={assets} loading={loading} onSelect={setSelected} go={go} version={version} />}
-          {page === 'Inventory' && <Inventory version={version} buildings={buildings} onSelect={setSelected} />}
+          {page === 'Inventory' && <Inventory version={version} buildings={buildings} onSelect={setSelected} onChanged={refresh} />}
           {page === 'Scan' && <Scan onSelect={setSelected} />}
           {page === 'Audits' && <Audits buildings={buildings} onSelect={setSelected} onChanged={refresh} />}
           {page === 'Buildings' && <Buildings buildings={buildings} onChanged={refresh} />}
           {page === 'Maintenance' && <Maintenance assets={assets} onSelect={setSelected} onChanged={refresh} version={version} />}
           {page === 'People' && <People onSelect={setSelected} version={version} />}
+          {page === 'Reports' && <Reports onSelect={setSelected} version={version} />}
           {page === 'Users' && <Users />}
+          {page === 'Settings' && <Settings />}
         </main>
       </div>
       {selected && !editing && (

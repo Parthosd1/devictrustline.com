@@ -156,3 +156,26 @@ tr.clickable:hover td{background:#f8faff}
 .panel.nested{margin-bottom:24px;box-shadow:none}
 .panel.nested td,.panel.nested th{padding:11px 14px}
 @media(max-width:720px){.wo-grid{grid-template-columns:1fr 1fr}}
+/* Phase 7: reports, import, settings */
+.col-chart{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;align-items:end;height:220px;padding:10px 25px 24px}
+.col{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;outline:none}
+.col-bar{flex:1;width:100%;max-width:28px;display:flex;align-items:flex-end}
+.col-bar>div{width:100%;background:#3c74ed;border-radius:4px 4px 0 0;min-height:2px}
+.col small{font-size:10px;color:#8c9ab0}
+.col-tip{position:absolute;bottom:calc(100% - 20px);left:50%;transform:translateX(-50%);background:#192640;color:#fff;font-size:11px;padding:6px 9px;border-radius:7px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .1s;z-index:2}
+.col:hover .col-tip,.col:focus .col-tip{opacity:1}
+.col:hover .col-bar>div,.col:focus .col-bar>div{background:#1e52cf}
+.import-row{display:flex;gap:10px;align-items:stretch}
+.file-drop{flex:1;display:flex;align-items:center;gap:10px;border:1.5px dashed #c9d5ea;border-radius:10px;padding:14px;color:#4d5e79;font-size:13px;font-weight:600;cursor:pointer}
+.file-drop:hover{background:#f5f8ff}
+.file-drop input{position:absolute;opacity:0;width:1px;height:1px}
+.import-check{margin-top:16px;border:1px solid #e6eaf1;border-radius:10px;padding:14px;font-size:13px;color:#2b3951}
+.import-errors{margin:10px 0 0;padding-left:18px;max-height:220px;overflow:auto;font-size:12px;color:#b23b3b;display:grid;gap:4px}
+.import-errors b{color:#7a2626;margin-right:6px}
+.notice{margin:0 25px 16px;background:#eaf8f0;color:#1f7a4a;border-radius:9px;padding:11px 14px;font-size:12px;font-weight:700}
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:19px;align-items:start}
+.settings-body{padding:0 25px 25px}
+.settings-body .wide,.settings-body .error-banner{grid-column:1/-1}
+.settings-body .row-end{justify-content:flex-end}
+.hint.ok{color:#1f7a4a;font-weight:700;margin:0}
+@media (max-width:900px){.settings-grid{grid-template-columns:1fr}.col-chart{padding-inline:12px}}
