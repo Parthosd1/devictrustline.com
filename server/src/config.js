@@ -16,6 +16,8 @@ export const config = {
   isProduction,
   port: Number(env.PORT || 4000),
   databaseUrl: required('DATABASE_URL', 'postgres://postgres:postgres@localhost:5432/devicetrustline'),
+  databaseSsl: env.DATABASE_SSL || null,
+  databasePoolSize: Number(env.DATABASE_POOL_SIZE || 10),
   jwtSecret,
   sessionHours: Number(env.SESSION_HOURS || 8),
   // Browser origins allowed to make state-changing requests with the session cookie.
@@ -23,4 +25,7 @@ export const config = {
   // Self-service workspace sign-up. Turn off once your organization is set up.
   allowSignup: (env.ALLOW_SIGNUP ?? (isProduction ? 'false' : 'true')) === 'true',
   trustProxy: env.TRUST_PROXY === 'true',
+  // Directory holding the built web app (vite build output). When set, the API also serves the app.
+  staticDir: env.STATIC_DIR || null,
+  logRequests: (env.LOG_REQUESTS ?? (isProduction ? 'true' : 'false')) === 'true',
 };

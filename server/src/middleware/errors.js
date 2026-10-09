@@ -20,6 +20,11 @@ export function errorHandler(err, req, res, _next) {
     return res.status(err.status).json({ error: err.message, ...(err.details && { details: err.details }) });
   }
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Malformed JSON body' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Request is too large' });
+  // Errors from express itself (for example a missing static file) carry their own client status.
+  if (err.status >= 400 && err.status < 500) {
+    return res.status(err.status).json({ error: err.expose ? err.message : err.status === 404 ? 'Not found' : 'Bad request' });
+  }
   if (err.code && PG_MESSAGES[err.code]) {
     const [status, message] = PG_MESSAGES[err.code];
     return res.status(status).json({ error: message, ...(err.constraint && { constraint: err.constraint }) });
