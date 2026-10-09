@@ -12,7 +12,7 @@ Each phase ships as its own pull request (or a short series), keeps the existing
 | 5. Audits | Weekly and monthly audits run independently, each with its own scope, schedule, assignee, scan-based verification, discrepancy list (missing, unexpected, wrong location) and a locked, immutable record when closed. Automatic creation of each week's/month's audit comes with scheduled notifications in phase 7 | **In review** |
 | 6. Maintenance | Work orders with priority, assignee, vendor, cost and notes; status flow; full maintenance history on each asset | **In review** |
 | 7. Reporting and import | Reports page (status, type, building, assignment, warranties, maintenance cost, still-missing assets, recent audits) with CSV downloads; CSV import with validation, preview and all-or-nothing commit; automatic weekly/monthly audits; settings page with password change. Email summaries need an email provider and move to phase 8 | **In review** |
-| 8. Production | Hosting and managed PostgreSQL, devicetrustline.com domain and TLS, backups, error monitoring, email invitations and password reset, security review | Planned |
+| 8. Production | One production image serving the app and API, HTTPS with automatic certificates, nightly backups, Render blueprint for managed hosting, first-admin setup command, security headers, request logs, health checks ([docs/DEPLOYMENT.md](DEPLOYMENT.md)). Email invitations and password reset wait on choosing an email provider | **In review** |
 
 ## Decisions so far
 
