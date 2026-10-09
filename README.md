@@ -33,10 +33,10 @@ Build the frontend for production with `npm run build`. The API is documented in
 - Buildings and locations/stations management
 - Maintenance queue
 - User management for admins
-- Weekly and monthly verification checklists (kept in the browser until recorded audit runs ship)
+- Independent weekly and monthly audits: pick a scope, scan to verify, catch wrong-location and unexpected assets, close to a permanent record
 
 ## Current limitations
 
-Weekly and monthly audit checklists are still stored in the browser and are not a formal audit record. Maintenance work orders, reporting and production hosting are coming in later phases. See [docs/ROADMAP.md](docs/ROADMAP.md).
+Maintenance work orders, reporting and production hosting are coming in later phases. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Domain: devicetrustline.com (GitHub repository is spelled `devictrustline.com`).

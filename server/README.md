@@ -48,6 +48,9 @@ TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/devicetrustline_te
 | POST | `/api/assets/:id/assign` `{personId, includeComponents?, note?}`, `/api/assets/:id/return` `{status?, includeComponents?, note?}` | `assets:write` |
 | GET | `/api/people` | `assets:read` |
 | POST, PATCH | `/api/people`, `/api/people/:id` | `people:write` |
+| GET | `/api/audits?period=&status=`, `/api/audits/:id` (with items) | `audits:read` |
+| POST | `/api/audits` `{period, buildingId?, locationId?}`, `/api/audits/:id/scan` `{code, locationId?}`, `/api/audits/:id/close` | `audits:perform` |
+| PATCH | `/api/audits/:id/items/:assetId` `{result, note?}` | `audits:perform` |
 
 Sign-in uses an httpOnly session cookie; API clients may send the same token as `Authorization: Bearer <token>`.
 Login and sign-up are rate limited. State-changing requests from browser origins not listed in `APP_ORIGIN` are refused.
