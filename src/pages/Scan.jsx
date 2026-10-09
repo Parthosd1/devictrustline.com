@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, ScanLine, Search } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ScanLine, Search } from 'lucide-react';
 import { api } from '../api.js';
+import { CameraScanner, useDedupe } from '../camera.jsx';
 import { AssetIcon, ErrorBanner, StatusBadge } from '../components.jsx';
 
 // Looks up whatever a scanner produced: an asset tag, a label QR link, or a manufacturer serial barcode.
@@ -8,19 +9,13 @@ export function Scan({ onSelect }) {
   const [code, setCode] = useState('');
   const [results, setResults] = useState([]);
   const [error, setError] = useState(null);
-  const [camera, setCamera] = useState(false);
-  const [cameraError, setCameraError] = useState(null);
   const inputRef = useRef(null);
-  const videoRef = useRef(null);
-  const lastScan = useRef({ code: '', at: 0 });
+  const isNew = useDedupe();
 
   async function lookup(raw) {
     const value = raw.trim();
-    if (!value) return;
-    // Cameras report the same code many times a second; ignore repeats for a moment.
+    if (!value || !isNew(value)) return;
     const now = Date.now();
-    if (value === lastScan.current.code && now - lastScan.current.at < 2500) return;
-    lastScan.current = { code: value, at: now };
     try {
       const asset = await api(`/assets/lookup?code=${encodeURIComponent(value)}`);
       setError(null);
@@ -38,31 +33,6 @@ export function Scan({ onSelect }) {
     inputRef.current?.focus();
   }
 
-  useEffect(() => {
-    if (!camera) return undefined;
-    let controls;
-    let stopped = false;
-    (async () => {
-      try {
-        const { BrowserMultiFormatReader } = await import('@zxing/browser');
-        const reader = new BrowserMultiFormatReader();
-        controls = await reader.decodeFromConstraints(
-          { video: { facingMode: 'environment' } },
-          videoRef.current,
-          (result) => { if (result) lookup(result.getText()); },
-        );
-        if (stopped) controls.stop();
-      } catch (err) {
-        setCameraError(err?.name === 'NotAllowedError'
-          ? 'Camera permission was denied. Allow camera access for this site, or use a handheld scanner.'
-          : 'No camera is available on this device. Use a handheld scanner or type the code.');
-        setCamera(false);
-      }
-    })();
-    return () => { stopped = true; controls?.stop(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera]);
-
   return (
     <div className="scan-layout">
       <section className="panel scan-panel">
@@ -77,13 +47,7 @@ export function Scan({ onSelect }) {
           </div>
           <button className="primary"><Search size={16} /> Look up</button>
         </form>
-        <div className="camera-row">
-          <button className="outline" type="button" onClick={() => { setCameraError(null); setCamera(!camera); }}>
-            {camera ? <><CameraOff size={16} /> Stop camera</> : <><Camera size={16} /> Use camera</>}
-          </button>
-          {cameraError && <span className="camera-error">{cameraError}</span>}
-        </div>
-        {camera && <div className="video-wrap"><video ref={videoRef} muted playsInline /><div className="reticle" /></div>}
+        <CameraScanner onCode={lookup} />
       </section>
       <section className="panel">
         <div className="panel-head"><div><h2>Scanned this session <span className="count">{results.length}</span></h2><p>Newest first. Select one to open it.</p></div></div>
