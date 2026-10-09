@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Download, Search } from 'lucide-react';
+import { Download, QrCode, Search } from 'lucide-react';
 import { api, query } from '../api.js';
 import { AssetTable, ErrorBanner, downloadCSV } from '../components.jsx';
 import { ASSET_STATUSES, ASSET_TYPES } from '../constants.js';
+import { LabelSheet } from './Labels.jsx';
 
 const PAGE_SIZE = 50;
 
@@ -14,6 +15,7 @@ export function Inventory({ version, buildings, onSelect }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [labels, setLabels] = useState(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(filters.q), 250);
@@ -35,16 +37,23 @@ export function Inventory({ version, buildings, onSelect }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey, page, version]);
 
+  async function fetchAll() {
+    const items = [];
+    for (let offset = 0; ; offset += 500) {
+      const r = await api(`/assets${query({ ...params, limit: 500, offset })}`);
+      items.push(...r.items);
+      if (items.length >= r.total || r.items.length === 0) return items;
+    }
+  }
+
+  async function printLabels() {
+    try { setLabels(await fetchAll()); } catch (err) { setError(err); }
+  }
+
   async function exportAll() {
     setExporting(true);
     try {
-      const items = [];
-      for (let offset = 0; ; offset += 500) {
-        const r = await api(`/assets${query({ ...params, limit: 500, offset })}`);
-        items.push(...r.items);
-        if (items.length >= r.total || r.items.length === 0) break;
-      }
-      downloadCSV(items);
+      downloadCSV(await fetchAll());
     } catch (err) {
       setError(err);
     } finally {
@@ -59,9 +68,12 @@ export function Inventory({ version, buildings, onSelect }) {
     <section className="panel">
       <div className="panel-head wrap">
         <div><h2>All Assets <span className="count">{result.total}</span></h2><p>Inventory registry</p></div>
-        <button className="outline" onClick={exportAll} disabled={exporting || result.total === 0}>
-          <Download size={16} /> {exporting ? 'Exporting…' : 'Export CSV'}
-        </button>
+        <div className="row-end">
+          <button className="outline" onClick={printLabels} disabled={result.total === 0}><QrCode size={16} /> Print labels</button>
+          <button className="outline" onClick={exportAll} disabled={exporting || result.total === 0}>
+            <Download size={16} /> {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
+        </div>
       </div>
       <div className="filters">
         <div className="search">
@@ -83,6 +95,7 @@ export function Inventory({ version, buildings, onSelect }) {
       </div>
       <ErrorBanner error={error} />
       <AssetTable assets={result.items} loading={loading} onSelect={onSelect} />
+      {labels && <LabelSheet assets={labels} onClose={() => setLabels(null)} />}
       {pages > 1 && (
         <div className="pager">
           <button className="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</button>

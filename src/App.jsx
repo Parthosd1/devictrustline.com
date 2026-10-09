@@ -14,11 +14,13 @@ import { Dashboard } from './pages/Dashboard.jsx';
 import { Inventory } from './pages/Inventory.jsx';
 import { Maintenance } from './pages/Maintenance.jsx';
 import { People } from './pages/People.jsx';
+import { Scan } from './pages/Scan.jsx';
 import { Users } from './pages/Users.jsx';
 
 const PAGES = {
   Dashboard: { icon: LayoutDashboard, title: 'Asset Overview', blurb: 'Your equipment, locations and audit activity in one place.' },
   Inventory: { icon: Boxes, title: 'Inventory', blurb: 'Search and manage every asset across your facilities.' },
+  Scan: { icon: ScanLine, title: 'Scan', blurb: 'Find any asset by scanning its label or barcode.' },
   Audits: { icon: ClipboardCheck, title: 'Audits', blurb: 'Track physical verification for weekly and monthly inventory reviews.' },
   Buildings: { icon: Building2, title: 'Buildings', blurb: 'A clear view of your equipment by facility and location.' },
   People: { icon: Contact, title: 'People', blurb: 'Employees and staff who can be assigned equipment.' },
@@ -54,6 +56,16 @@ export function App() {
   }, []);
 
   useEffect(() => { reload(); }, [reload, version]);
+
+  // A label's QR code links to /?asset=DT-1001; open that asset once signed in.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tag = params.get('asset');
+    if (!tag) return;
+    params.delete('asset');
+    window.history.replaceState(null, '', `${window.location.pathname}${params.size ? `?${params}` : ''}`);
+    api(`/assets/lookup?code=${encodeURIComponent(tag)}`).then(setSelected).catch(setError);
+  }, []);
   const refresh = () => setVersion((v) => v + 1);
 
   const go = (name) => { setPage(name); setMenu(false); };
@@ -111,6 +123,7 @@ export function App() {
           <ErrorBanner error={error} />
           {page === 'Dashboard' && <Dashboard assets={assets} loading={loading} onSelect={setSelected} go={go} orgId={user.organization.id} />}
           {page === 'Inventory' && <Inventory version={version} buildings={buildings} onSelect={setSelected} />}
+          {page === 'Scan' && <Scan onSelect={setSelected} />}
           {page === 'Audits' && <Audits assets={assets} orgId={user.organization.id} />}
           {page === 'Buildings' && <Buildings buildings={buildings} onChanged={refresh} />}
           {page === 'Maintenance' && <Maintenance assets={assets} loading={loading} onSelect={setSelected} />}
