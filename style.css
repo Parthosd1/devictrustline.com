@@ -85,3 +85,33 @@ tr.clickable:hover td{background:#f8faff}
 .component small{display:block;font-size:11px;color:#9ca7b8;margin-top:3px}
 .component .asset-square{width:32px;height:32px}
 @media(max-width:720px){.relations{grid-template-columns:1fr}.detail-head{flex-wrap:wrap}}
+
+/* Phase 4: scanning and labels */
+.scan-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px;align-items:start}
+.scan-form{display:flex;gap:10px;padding:0 25px}
+.scan-form .search{margin:0;flex:1;max-width:none}
+.scan-form .search input{font-size:15px}
+.camera-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 25px 22px}
+.camera-error{font-size:12px;color:#a33a2c}
+.video-wrap{position:relative;margin:0 25px 25px;border-radius:12px;overflow:hidden;background:#0b1326;aspect-ratio:4/3}
+.video-wrap video{width:100%;height:100%;object-fit:cover;display:block}
+.reticle{position:absolute;inset:18% 15%;border:3px solid #5790ffcc;border-radius:14px;box-shadow:0 0 0 999px #0b132655}
+.scan-results{display:grid;gap:8px;padding:0 25px 25px}
+.component.unknown{border-style:dashed}
+.modal-actions.top{margin:0 0 18px;justify-content:flex-start}
+.label-sheet{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.label{display:flex;align-items:center;gap:12px;border:1px dashed #c9d3e3;border-radius:8px;padding:12px;break-inside:avoid;page-break-inside:avoid;background:#fff}
+.label img,.qr-placeholder{width:84px;height:84px;flex-shrink:0;image-rendering:pixelated}
+.qr-placeholder{background:#eef2f8;border-radius:6px}
+.label strong{display:block;font:800 16px 'Plus Jakarta Sans',sans-serif;color:#111c35;letter-spacing:.3px}
+.label span{display:block;font-size:12px;color:#33435f;margin-top:4px}
+.label small{display:block;font-size:10px;color:#7a879c;margin-top:6px}
+@media(max-width:1050px){.scan-layout{grid-template-columns:1fr}}
+@media(max-width:720px){.scan-form{padding:0 20px;flex-direction:column}.camera-row{padding:14px 20px 18px}.video-wrap{margin:0 14px 18px}.scan-results{padding:0 14px 18px}}
+/* Print only the label sheet. */
+@media print{
+  body *{visibility:hidden}
+  .label-sheet,.label-sheet *{visibility:visible}
+  .label-sheet{position:absolute;left:0;top:0;width:100%;grid-template-columns:repeat(3,1fr);gap:4mm}
+  .label{border:1px solid #999}
+}

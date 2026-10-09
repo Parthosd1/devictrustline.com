@@ -139,6 +139,30 @@ assetsRouter.get('/', requirePermission('assets:read'), route(async (req, res) =
   res.json({ items, total, limit: f.limit, offset: f.offset });
 }));
 
+// Resolves a scanned code: an asset tag, a serial number, or a DeviceTrustline label URL (…?asset=DT-1001).
+export function parseScannedCode(raw) {
+  const code = raw.trim();
+  try {
+    const url = new URL(code);
+    const tag = url.searchParams.get('asset');
+    if (tag) return tag.trim();
+  } catch { /* not a URL */ }
+  return code;
+}
+
+const lookupSchema = z.object({ code: z.string().trim().min(1).max(500) });
+
+assetsRouter.get('/lookup', requirePermission('assets:read'), route(async (req, res) => {
+  const code = parseScannedCode(lookupSchema.parse(req.query).code);
+  const { rows } = await query(
+    `${SELECT} WHERE a.org_id = $1 AND (lower(a.asset_tag) = lower($2) OR lower(a.serial) = lower($2))
+      ORDER BY (lower(a.asset_tag) = lower($2)) DESC LIMIT 1`,
+    [req.user.org_id, code],
+  );
+  if (!rows[0]) throw new HttpError(404, `No asset matches “${code}”`);
+  res.json({ ...rows[0], matchedBy: rows[0].assetTag.toLowerCase() === code.toLowerCase() ? 'assetTag' : 'serial' });
+}));
+
 assetsRouter.get('/:id', requirePermission('assets:read'), route(async (req, res) => {
   const asset = await findAsset({ query }, req.user.org_id, uuid.parse(req.params.id));
   const { rows: children } = await query(`${SELECT} WHERE a.org_id = $1 AND a.parent_asset_id = $2 ORDER BY a.asset_tag`,
