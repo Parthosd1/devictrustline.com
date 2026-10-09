@@ -1,0 +1,34 @@
+# Local development stack: PostgreSQL plus the API.
+#   docker compose up -d        then   npm run dev   for the frontend
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: devicetrustline
+      POSTGRES_PASSWORD: devicetrustline
+      POSTGRES_DB: devicetrustline
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devicetrustline"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./server
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://devicetrustline:devicetrustline@db:5432/devicetrustline
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-not-for-production-use}
+      APP_ORIGIN: http://localhost:5173
+      ALLOW_SIGNUP: "true"
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
