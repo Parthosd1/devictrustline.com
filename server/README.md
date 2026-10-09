@@ -41,9 +41,12 @@ TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/devicetrustline_te
 | POST, PATCH | `/api/users`, `/api/users/:id` | `users:manage` |
 | GET | `/api/buildings` (with locations and counts) | `sites:read` |
 | POST, PATCH, DELETE | `/api/buildings[/:id]`, `/api/buildings/:id/locations`, `/api/locations/:id` | `sites:write` |
-| GET | `/api/assets?q=&status=&type=&buildingId=&locationId=&limit=&offset=` | `assets:read` |
+| GET | `/api/assets?q=&status=&type=&buildingId=&locationId=&personId=&parentId=&limit=&offset=` | `assets:read` |
 | GET | `/api/assets/:id`, `/api/assets/:id/events` | `assets:read` |
-| POST, PATCH | `/api/assets`, `/api/assets/:id` | `assets:write` |
+| POST, PATCH | `/api/assets`, `/api/assets/:id` (`parentId` attaches it to another asset) | `assets:write` |
+| POST | `/api/assets/:id/assign` `{personId, includeComponents?, note?}`, `/api/assets/:id/return` `{status?, includeComponents?, note?}` | `assets:write` |
+| GET | `/api/people` | `assets:read` |
+| POST, PATCH | `/api/people`, `/api/people/:id` | `people:write` |
 
 Sign-in uses an httpOnly session cookie; API clients may send the same token as `Authorization: Bearer <token>`.
 Login and sign-up are rate limited. State-changing requests from browser origins not listed in `APP_ORIGIN` are refused.

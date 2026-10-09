@@ -26,6 +26,8 @@ Build the frontend for production with `npm run build`. The API is documented in
 - Dashboard with inventory KPIs and type breakdown
 - Searchable, filterable inventory with CSV export
 - Asset registration and editing with an automatic asset tag, plus full change history per asset
+- People, plus assigning and checking in equipment (a workstation's components go with it)
+- Parent-child assets: attach monitors, scanners and docks to a workstation; they move with it
 - Buildings and locations/stations management
 - Maintenance queue
 - User management for admins
@@ -33,6 +35,6 @@ Build the frontend for production with `npm run build`. The API is documented in
 
 ## Current limitations
 
-Weekly and monthly audit checklists are still stored in the browser and are not a formal audit record. Barcode/QR scanning, assignments, parent-child assets, maintenance work orders, reporting and production hosting are coming in later phases. See [docs/ROADMAP.md](docs/ROADMAP.md).
+Weekly and monthly audit checklists are still stored in the browser and are not a formal audit record. Barcode/QR scanning, maintenance work orders, reporting and production hosting are coming in later phases. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Domain: devicetrustline.com (GitHub repository is spelled `devictrustline.com`).

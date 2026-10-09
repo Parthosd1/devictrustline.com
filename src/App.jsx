@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Boxes, Building2, ChevronRight, ClipboardCheck, LayoutDashboard, LogOut, Menu, Plus, ScanLine, Users as UsersIcon, Wrench,
+  Boxes, Building2, ChevronRight, ClipboardCheck, Contact, LayoutDashboard, LogOut, Menu, Plus, ScanLine, Users as UsersIcon, Wrench,
 } from 'lucide-react';
 import { api } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -13,6 +13,7 @@ import { Buildings } from './pages/Buildings.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
 import { Inventory } from './pages/Inventory.jsx';
 import { Maintenance } from './pages/Maintenance.jsx';
+import { People } from './pages/People.jsx';
 import { Users } from './pages/Users.jsx';
 
 const PAGES = {
@@ -20,6 +21,7 @@ const PAGES = {
   Inventory: { icon: Boxes, title: 'Inventory', blurb: 'Search and manage every asset across your facilities.' },
   Audits: { icon: ClipboardCheck, title: 'Audits', blurb: 'Track physical verification for weekly and monthly inventory reviews.' },
   Buildings: { icon: Building2, title: 'Buildings', blurb: 'A clear view of your equipment by facility and location.' },
+  People: { icon: Contact, title: 'People', blurb: 'Employees and staff who can be assigned equipment.' },
   Maintenance: { icon: Wrench, title: 'Maintenance', blurb: 'Keep track of devices requiring maintenance.' },
   Users: { icon: UsersIcon, title: 'Users', blurb: 'Who can sign in to this workspace, and what they can do.', permission: 'users:read' },
 };
@@ -112,15 +114,16 @@ export function App() {
           {page === 'Audits' && <Audits assets={assets} orgId={user.organization.id} />}
           {page === 'Buildings' && <Buildings buildings={buildings} onChanged={refresh} />}
           {page === 'Maintenance' && <Maintenance assets={assets} loading={loading} onSelect={setSelected} />}
+          {page === 'People' && <People onSelect={setSelected} version={version} />}
           {page === 'Users' && <Users />}
         </main>
       </div>
       {selected && !editing && (
         <AssetDetail key={`${selected.id}-${version}`} asset={selected} onClose={() => setSelected(null)}
-          onEdit={(a) => setEditing(a)} />
+          onEdit={(a) => setEditing(a)} onSelect={setSelected} onChanged={onSaved} />
       )}
       {editing && (
-        <AssetForm asset={editing.id ? editing : null} buildings={buildings} onClose={() => setEditing(null)} onSaved={onSaved} />
+        <AssetForm asset={editing.id ? editing : null} buildings={buildings} assets={assets} onClose={() => setEditing(null)} onSaved={onSaved} />
       )}
     </div>
   );

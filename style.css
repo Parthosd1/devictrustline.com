@@ -62,3 +62,26 @@ tr.clickable:hover td{background:#f8faff}
 .filters{padding:0 20px 16px}
 .auth-card{padding:28px 22px}
 }
+
+/* Phase 3: assignments and components */
+.detail-actions{margin-left:auto;display:flex;gap:8px}
+.detail-head .detail-actions .outline{margin-left:0}
+.assign-panel{background:#f5f8ff;border:1px solid #dfe8fb;border-radius:12px;padding:18px;margin-bottom:18px}
+.assign-panel .modal-actions{margin-top:14px}
+.check{display:flex;align-items:center;gap:8px;font-size:12px;color:#4d5e79;font-weight:600;margin-top:12px}
+.relations{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.relations>div{border:1px solid #e6eaf1;border-radius:12px;padding:14px 16px;font-size:13px}
+.relations strong{display:block;color:#2b3951;margin-top:6px}
+.relations small{display:block;color:#9ca7b8;font-size:11px;margin-top:3px}
+.rel-label{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:1px;color:#8896ac;font-weight:800;text-transform:uppercase}
+.link-text{border:0;background:transparent;padding:0;margin-top:6px;color:#3169ed;font-weight:700;text-align:left}
+.link-text:hover{text-decoration:underline}
+.section-title{display:flex;align-items:center;gap:6px}
+.component-list{display:grid;gap:8px;margin-bottom:24px}
+.component{display:flex;align-items:center;gap:11px;border:1px solid #e6eaf1;background:#fff;border-radius:10px;padding:9px 12px;text-align:left}
+.component:hover{background:#f8faff}
+.component>span:nth-child(2){flex:1;min-width:0}
+.component strong{display:block;font-size:12px;color:#2b3951}
+.component small{display:block;font-size:11px;color:#9ca7b8;margin-top:3px}
+.component .asset-square{width:32px;height:32px}
+@media(max-width:720px){.relations{grid-template-columns:1fr}.detail-head{flex-wrap:wrap}}
