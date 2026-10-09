@@ -6,6 +6,7 @@ const GRANTS = {
   'assets:write': ['admin', 'manager', 'technician'],
   'sites:read': ['admin', 'manager', 'technician', 'auditor', 'viewer'],
   'sites:write': ['admin', 'manager'],
+  'people:write': ['admin', 'manager', 'technician'],
   'users:read': ['admin', 'manager'],
   'users:manage': ['admin'],
 };
