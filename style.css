@@ -141,3 +141,18 @@ tr.clickable:hover td{background:#f8faff}
 .link-like:hover strong{color:#3169ed}
 .tag{display:inline-block;margin-left:8px;font-size:10px;font-weight:800;background:#fff3e8;color:#9b5523;border-radius:5px;padding:2px 6px;vertical-align:middle}
 @media(max-width:720px){.audit-stats{grid-template-columns:repeat(2,1fr);padding:0 20px 16px}.chips{padding:16px 20px 4px}.scan-flash{margin:0 14px 18px}}
+
+/* Phase 6: maintenance */
+.status.urgent{background:#fdeceb;color:#b03a2e}
+.metric.warn .metric-icon{background:#fff3e8;color:#bc6a2e!important}
+.metric.bad .metric-icon{background:#fdeceb;color:#b03a2e!important}
+.wo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;margin:18px 0;padding:18px;background:#f8fafd;border-radius:12px}
+.wo-grid>div{display:grid;gap:7px;font-size:13px;align-content:start}
+.wo-grid strong{color:#2b3951}
+.wo-desc{font-size:13px;color:#40516c;margin:0 0 16px;line-height:1.5}
+.wo-resolution{font-size:13px;color:#1d7546;background:#eaf8f0;border-radius:10px;padding:12px 14px;margin:0 0 16px}
+.overdue{color:#b03a2e!important;font-weight:700}
+.muted-strong{color:#6b7a91!important;font-weight:600!important}
+.panel.nested{margin-bottom:24px;box-shadow:none}
+.panel.nested td,.panel.nested th{padding:11px 14px}
+@media(max-width:720px){.wo-grid{grid-template-columns:1fr 1fr}}
