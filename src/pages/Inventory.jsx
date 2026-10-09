@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Download, QrCode, Search } from 'lucide-react';
+import { Download, QrCode, Search, Upload } from 'lucide-react';
 import { api, query } from '../api.js';
+import { useAuth } from '../auth.jsx';
 import { AssetTable, ErrorBanner, downloadCSV } from '../components.jsx';
 import { ASSET_STATUSES, ASSET_TYPES } from '../constants.js';
+import { ImportAssets } from './ImportAssets.jsx';
 import { LabelSheet } from './Labels.jsx';
 
 const PAGE_SIZE = 50;
 
-export function Inventory({ version, buildings, onSelect }) {
+export function Inventory({ version, buildings, onSelect, onChanged }) {
+  const { can } = useAuth();
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState(null);
   const [filters, setFilters] = useState({ q: '', status: '', type: '', buildingId: '' });
   const [debouncedQ, setDebouncedQ] = useState('');
   const [page, setPage] = useState(0);
@@ -69,6 +74,7 @@ export function Inventory({ version, buildings, onSelect }) {
       <div className="panel-head wrap">
         <div><h2>All Assets <span className="count">{result.total}</span></h2><p>Inventory registry</p></div>
         <div className="row-end">
+          {can('assets:write') && <button className="outline" onClick={() => setImporting(true)}><Upload size={16} /> Import CSV</button>}
           <button className="outline" onClick={printLabels} disabled={result.total === 0}><QrCode size={16} /> Print labels</button>
           <button className="outline" onClick={exportAll} disabled={exporting || result.total === 0}>
             <Download size={16} /> {exporting ? 'Exporting…' : 'Export CSV'}
@@ -94,7 +100,12 @@ export function Inventory({ version, buildings, onSelect }) {
         </select>
       </div>
       <ErrorBanner error={error} />
+      {notice && <div className="notice" role="status">{notice}</div>}
       <AssetTable assets={result.items} loading={loading} onSelect={onSelect} />
+      {importing && (
+        <ImportAssets onClose={() => setImporting(false)}
+          onImported={(n) => { setImporting(false); setNotice(`Imported ${n} assets.`); onChanged(); }} />
+      )}
       {labels && <LabelSheet assets={labels} onClose={() => setLabels(null)} />}
       {pages > 1 && (
         <div className="pager">
