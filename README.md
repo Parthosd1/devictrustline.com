@@ -31,12 +31,12 @@ Build the frontend for production with `npm run build`. The API is documented in
 - QR labels for any asset or a whole filtered list, printable on plain or adhesive paper
 - Scan page: camera scanning (QR and common barcodes), handheld USB/Bluetooth scanners, or typed codes; matches asset tags and manufacturer serials
 - Buildings and locations/stations management
-- Maintenance queue
+- Maintenance work orders: priority, assignee, vendor, due date, cost, notes; assets go into and out of Maintenance automatically
 - User management for admins
 - Independent weekly and monthly audits: pick a scope, scan to verify, catch wrong-location and unexpected assets, close to a permanent record
 
 ## Current limitations
 
-Maintenance work orders, reporting and production hosting are coming in later phases. See [docs/ROADMAP.md](docs/ROADMAP.md).
+Reporting, CSV import and production hosting are coming in later phases. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Domain: devicetrustline.com (GitHub repository is spelled `devictrustline.com`).

@@ -24,7 +24,7 @@ const PAGES = {
   Audits: { icon: ClipboardCheck, title: 'Audits', blurb: 'Run weekly and monthly physical audits by scanning, and keep a permanent record of each.' },
   Buildings: { icon: Building2, title: 'Buildings', blurb: 'A clear view of your equipment by facility and location.' },
   People: { icon: Contact, title: 'People', blurb: 'Employees and staff who can be assigned equipment.' },
-  Maintenance: { icon: Wrench, title: 'Maintenance', blurb: 'Keep track of devices requiring maintenance.' },
+  Maintenance: { icon: Wrench, title: 'Maintenance', blurb: 'Track repairs from report to resolution, with cost and history.' },
   Users: { icon: UsersIcon, title: 'Users', blurb: 'Who can sign in to this workspace, and what they can do.', permission: 'users:read' },
 };
 
@@ -126,14 +126,14 @@ export function App() {
           {page === 'Scan' && <Scan onSelect={setSelected} />}
           {page === 'Audits' && <Audits buildings={buildings} onSelect={setSelected} onChanged={refresh} />}
           {page === 'Buildings' && <Buildings buildings={buildings} onChanged={refresh} />}
-          {page === 'Maintenance' && <Maintenance assets={assets} loading={loading} onSelect={setSelected} />}
+          {page === 'Maintenance' && <Maintenance assets={assets} onSelect={setSelected} onChanged={refresh} version={version} />}
           {page === 'People' && <People onSelect={setSelected} version={version} />}
           {page === 'Users' && <Users />}
         </main>
       </div>
       {selected && !editing && (
         <AssetDetail key={`${selected.id}-${version}`} asset={selected} onClose={() => setSelected(null)}
-          onEdit={(a) => setEditing(a)} onSelect={setSelected} onChanged={onSaved} />
+          onEdit={(a) => setEditing(a)} onSelect={setSelected} onChanged={onSaved} onRefresh={refresh} />
       )}
       {editing && (
         <AssetForm asset={editing.id ? editing : null} buildings={buildings} assets={assets} onClose={() => setEditing(null)} onSaved={onSaved} />

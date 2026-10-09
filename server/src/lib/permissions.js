@@ -9,6 +9,8 @@ const GRANTS = {
   'people:write': ['admin', 'manager', 'technician'],
   'audits:read': ['admin', 'manager', 'technician', 'auditor', 'viewer'],
   'audits:perform': ['admin', 'manager', 'auditor'],
+  'maintenance:read': ['admin', 'manager', 'technician', 'auditor', 'viewer'],
+  'maintenance:write': ['admin', 'manager', 'technician'],
   'users:read': ['admin', 'manager'],
   'users:manage': ['admin'],
 };
