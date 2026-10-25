@@ -1,6 +1,6 @@
 # Deploying DeviceTrustline
 
-The production build is one Docker image (the root `Dockerfile`). It builds the web app and runs the API, which serves the app and the `/api` routes from the same origin. The only other thing it needs is PostgreSQL 14 or newer.
+The production build is one Docker image (the root `Dockerfile`). It builds the web app and the Rust API into a small image with a single binary, which serves the app and the `/api` routes from the same origin. The only other thing it needs is PostgreSQL 14 or newer.
 
 Pick one of the two options below.
 
@@ -21,7 +21,7 @@ Use any Linux VM with Docker (for example 2 vCPU and 2 GB RAM on DigitalOcean, H
    ```sh
    docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec \
      -e ORG_NAME='Your Company' -e ADMIN_EMAIL=you@yourcompany.com -e ADMIN_NAME='Your Name' \
-     -e ADMIN_PASSWORD='at least twelve characters' app npm run create-admin
+     -e ADMIN_PASSWORD='at least twelve characters' app devicetrustline create-admin
    ```
 4. Sign in at https://devicetrustline.com. Add your team under **Users**, your sites under **Buildings**, and load existing equipment with **Inventory → Import CSV**.
 
@@ -38,7 +38,7 @@ Restore into an empty database. To get one, stop the stack, remove the `pgdata` 
 
 1. In Render, choose **New → Blueprint** and select this repository. `render.yaml` creates the web service and a PostgreSQL database, and generates `JWT_SECRET`.
 2. Set `APP_ORIGIN` to the service URL, for example `https://devicetrustline.onrender.com`. After you add `devicetrustline.com` as a custom domain under **Settings → Custom Domains**, set it to `https://devicetrustline.com`. To accept both, separate them with commas.
-3. Open the service **Shell** and run step 3 above as `ORG_NAME=… ADMIN_EMAIL=… ADMIN_PASSWORD=… npm run create-admin`.
+3. Open the service **Shell** and run step 3 above as `ORG_NAME=… ADMIN_EMAIL=… ADMIN_PASSWORD=… devicetrustline create-admin`.
 
 Render's paid PostgreSQL plans include daily backups and point-in-time recovery. The same image also runs on Fly.io, Railway, Google Cloud Run, Azure Container Apps or AWS App Runner. On any of them, set the environment variables below and attach a managed PostgreSQL database.
 

@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+# Starts the API on a disposable database and runs the black-box HTTP tests in tests/http
+# against it. Needs PostgreSQL and Node; set TEST_DATABASE_URL if the test database is not
+# postgres://postgres:postgres@localhost:5432/devicetrustline_test. The database is wiped.
+set -eu
+cd "$(dirname "$0")/.."
+cargo build --quiet
+export TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgres://postgres:postgres@localhost:5432/devicetrustline_test}"
+port="${TEST_PORT:-4100}"
+static_dir="$(mktemp -d)"
+log="$(mktemp)"
+DATABASE_URL="$TEST_DATABASE_URL" PORT="$port" STATIC_DIR="$static_dir" ALLOW_SIGNUP=true \
+  AUTH_RATE_LIMIT=1000 DISABLE_SCHEDULER=true ./target/debug/devicetrustline >"$log" 2>&1 &
+server=$!
+trap 'kill $server 2>/dev/null; rm -rf "$static_dir" "$log"' EXIT
+for _ in $(seq 1 50); do
+  curl -sf "http://127.0.0.1:$port/api/health" >/dev/null && break
+  kill -0 $server 2>/dev/null || { cat "$log"; exit 1; }
+  sleep 0.2
+done
+bin="$(pwd)/target/debug/devicetrustline"
+cd tests/http
+[ -d node_modules ] || npm ci --silent
+status=0
+TEST_API_URL="http://127.0.0.1:$port" TEST_API_BIN="$bin" \
+  TEST_STATIC_DIR="$static_dir" npm test || status=$?
+[ $status -eq 0 ] || { echo "--- server log ---"; tail -50 "$log"; }
+exit $status

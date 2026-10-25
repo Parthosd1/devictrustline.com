@@ -31,22 +31,28 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
-        working-directory: server
+        working-directory: api
     env:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/devicetrustline_test
     steps:
       - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: server/package-lock.json
-      - run: npm ci
-      - run: npm test
+          cache-dependency-path: api/tests/http/package-lock.json
+      - run: cargo fmt --check
+      - run: cargo clippy --locked -- -D warnings
+      - run: cargo test --locked
+      - run: ./scripts/test-http.sh
 
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t devicetrustline-api server
+      - run: docker build -t devicetrustline-api api
       - run: docker build -t devicetrustline .

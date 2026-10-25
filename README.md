@@ -13,12 +13,10 @@ npm run dev                                # frontend on :5173, proxies /api to 
 Open http://localhost:5173 and choose **Create a workspace**, or load the sample inventory first:
 
 ```bash
-cd server && npm install
-DATABASE_URL=postgres://devicetrustline:devicetrustline@localhost:5432/devicetrustline \
-  SEED_ADMIN_EMAIL=you@example.com SEED_ADMIN_PASSWORD='a long password' npm run seed
+docker compose exec -e SEED_ADMIN_EMAIL=you@example.com -e SEED_ADMIN_PASSWORD='a long password' api devicetrustline seed
 ```
 
-To deploy to production (one Docker image, HTTPS, backups), follow [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The API is documented in [server/README.md](server/README.md).
+To deploy to production (one Docker image, HTTPS, backups), follow [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The API, written in Rust, is documented in [api/README.md](api/README.md).
 
 ## Features
 

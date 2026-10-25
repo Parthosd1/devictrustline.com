@@ -17,9 +17,9 @@ services:
       retries: 10
 
   api:
-    build: ./server
+    build: ./api
     environment:
-      NODE_ENV: production
+      APP_ENV: production
       DATABASE_URL: postgres://devicetrustline:devicetrustline@db:5432/devicetrustline
       JWT_SECRET: ${JWT_SECRET:-local-development-secret-not-for-production-use}
       APP_ORIGIN: http://localhost:5173

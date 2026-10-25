@@ -16,7 +16,7 @@ Each phase ships as its own pull request (or a short series), keeps the existing
 
 ## Decisions so far
 
-- **Stack:** React + Vite frontend (existing), Node 22 + Express API in `server/`, PostgreSQL 16, plain SQL migrations.
+- **Stack:** React + Vite frontend (existing), Rust API (Axum, SQLx) in `api/`, PostgreSQL 16, plain SQL migrations. The API was first written in Node/Express and ported to Rust with the same endpoints, schema and tests.
 - **Tenancy:** every table carries `org_id`; composite foreign keys stop rows from one organization referencing another's buildings, locations or users.
 - **Sessions:** signed token in an httpOnly, SameSite=Lax cookie; users are re-checked on every request, so deactivation, role changes and password resets take effect at once.
 - **Roles:**
