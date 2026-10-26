@@ -3,13 +3,17 @@ import { ArrowLeftRight, Link2, Pencil, QrCode, UserCheck, UserMinus, Wrench } f
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { AssetIcon, ErrorBanner, Modal, StatusBadge } from '../components.jsx';
+import { useCatalog } from '../catalog.jsx';
+import { Attachments, WarrantyBadge, Warranties } from './ItemExtras.jsx';
 import { LabelSheet } from './Labels.jsx';
 import { NewWorkOrder, WorkOrderDetail, WorkOrderList } from './Maintenance.jsx';
 
 const LABELS = {
   name: 'Name', type: 'Type', serial: 'Serial', manufacturer: 'Manufacturer', model: 'Model', status: 'Status',
   buildingId: 'Building', locationId: 'Location', parentId: 'Parent asset', notes: 'Notes', purchaseDate: 'Purchase date',
-  warrantyExpires: 'Warranty expires', source: 'Source',
+  warrantyExpires: 'Warranty ends', source: 'Source', assetTag: 'Tag', condition: 'Condition', ownerId: 'Owner',
+  purchasePrice: 'Price', currency: 'Currency', seller: 'Bought from', returnDeadline: 'Return by', maintenanceDue: 'Next maintenance',
+  tags: 'Tags', custom: 'Custom fields',
 };
 
 const formatTime = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -23,6 +27,13 @@ function describe(event) {
     case 'assigned': return `Assigned to ${c.assignedTo.to.name}${via}${note}`;
     case 'returned': return `Returned from ${c.assignedTo.from?.name ?? 'assignment'}${c.status ? `, now ${c.status.to}` : ''}${via}${note}`;
     case 'moved_with_parent': return 'Moved with its parent asset';
+    case 'attachment_added': return `Added ${c.attachment.to.kind}: ${c.attachment.to.filename}`;
+    case 'attachment_removed': return `Removed ${c.attachment.from.filename}`;
+    case 'warranty_added': return `Added a${c.kind?.to === 'extended' ? 'n extended' : ''} warranty${c.endsOn ? ` ending ${c.endsOn.to}` : ''}`;
+    case 'warranty_updated': return 'Updated a warranty';
+    case 'warranty_removed': return 'Removed a warranty';
+    case 'device_linked': return `Linked to ${c.device.to.name} found on ${c.device.to.computer}`;
+    case 'seen_on_other_computer': return `Now connected to ${c.computer.to} (was ${c.computer.from})`;
     case 'maintenance_opened': return `Work order ${c.workOrder.to.number} opened: ${c.workOrder.to.title}`;
     case 'maintenance_closed': return `Work order ${c.workOrder.to.number} ${c.workOrder.to.status}: ${c.workOrder.to.resolution}`;
     case 'audited': {
@@ -39,7 +50,7 @@ function describe(event) {
 
 function AssignPanel({ asset, onDone, onCancel }) {
   const [people, setPeople] = useState(null);
-  const [form, setForm] = useState({ personId: '', note: '', includeComponents: true, status: 'Available' });
+  const [form, setForm] = useState({ personId: '', note: '', includeComponents: true, status: 'Available', dueDate: '' });
   const [error, setError] = useState(null);
   const returning = !!asset.assignedPersonId;
 
@@ -53,7 +64,7 @@ function AssignPanel({ asset, onDone, onCancel }) {
     try {
       const updated = returning
         ? await api(`/assets/${asset.id}/return`, { method: 'POST', body: { ...body, status: form.status } })
-        : await api(`/assets/${asset.id}/assign`, { method: 'POST', body: { ...body, personId: form.personId } });
+        : await api(`/assets/${asset.id}/assign`, { method: 'POST', body: { ...body, personId: form.personId, dueDate: form.dueDate || null } });
       onDone(updated);
     } catch (err) { setError(err); }
   }
@@ -81,6 +92,12 @@ function AssignPanel({ asset, onDone, onCancel }) {
             {people?.length === 0 && <small className="hint">Add people on the People page first.</small>}
           </div>
         )}
+        {!returning && (
+          <div className="field">
+            <label htmlFor="assign-due">Due back (for loans)</label>
+            <input id="assign-due" type="date" value={form.dueDate} onChange={set('dueDate')} />
+          </div>
+        )}
         <div className="field">
           <label htmlFor="assign-note">Note</label>
           <input id="assign-note" value={form.note} onChange={set('note')} placeholder="Optional" />
@@ -102,6 +119,7 @@ function AssignPanel({ asset, onDone, onCancel }) {
 
 export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChanged, onRefresh }) {
   const { can } = useAuth();
+  const { fields } = useCatalog();
   const [asset, setAsset] = useState(initial);
   const [events, setEvents] = useState(null);
   const [error, setError] = useState(null);
@@ -120,11 +138,19 @@ export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChang
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.id]);
 
+  const money = asset.purchasePrice != null
+    ? new Intl.NumberFormat(undefined, asset.currency ? { style: 'currency', currency: asset.currency } : {}).format(asset.purchasePrice) : null;
   const rows = [
-    ['Asset tag', asset.assetTag], ['Type', asset.type], ['Serial', asset.serial],
-    ['Manufacturer', asset.manufacturer], ['Model', asset.model],
-    ['Building', asset.buildingName], ['Location', asset.locationName],
-    ['Purchase date', asset.purchaseDate], ['Warranty expires', asset.warrantyExpires],
+    ['Tag', asset.assetTag], ['Category', asset.type], ['Serial', asset.serial],
+    ['Manufacturer', asset.manufacturer], ['Model', asset.model], ['Condition', asset.condition],
+    ['Place', asset.buildingName], ['Spot', asset.locationName], ['Owner', asset.ownerName],
+    ['Purchase date', asset.purchaseDate], ['Price', money], ['Bought from', asset.seller],
+    ['Return by', asset.returnDeadline], ['Warranty ends', asset.warrantyExpires], ['Next maintenance', asset.maintenanceDue],
+    ...(asset.loanDue ? [['Due back', asset.loanDue]] : []),
+    ...fields.filter((f) => asset.custom?.[f.id] != null).map((f) => {
+      const v = asset.custom[f.id];
+      return [f.label, typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)];
+    }),
   ];
   const writable = can('assets:write');
 
@@ -134,6 +160,7 @@ export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChang
       <div className="detail-head">
         <AssetIcon type={asset.type} size={22} />
         <StatusBadge status={asset.status} />
+        {asset.warrantyStatus && asset.warrantyStatus !== 'unknown' && <WarrantyBadge status={asset.warrantyStatus} />}
         <div className="detail-actions">
           <button className="outline" onClick={() => setPrinting(true)}><QrCode size={15} /> Label</button>
           {can('maintenance:write') && asset.status !== 'Retired' && (
@@ -165,8 +192,13 @@ export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChang
         {rows.map(([label, value]) => (
           <div key={label}><dt>{label}</dt><dd>{value || '—'}</dd></div>
         ))}
+        {asset.tags?.length > 0 && <div className="span-2"><dt>Tags</dt><dd className="tag-row">{asset.tags.map((t) => <span key={t} className="tag">{t}</span>)}</dd></div>}
         {asset.notes && <div className="span-2"><dt>Notes</dt><dd className="pre">{asset.notes}</dd></div>}
       </dl>
+      <div className="detail-two">
+        <div><Warranties asset={asset} writable={writable} onChanged={onRefresh} /></div>
+        <div><Attachments asset={asset} writable={writable} onChanged={onRefresh} /></div>
+      </div>
       {asset.children?.length > 0 && (
         <>
           <h3 className="section-title"><ArrowLeftRight size={14} /> Attached components ({asset.children.length})</h3>
