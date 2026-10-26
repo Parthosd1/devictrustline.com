@@ -1,14 +1,20 @@
+pub mod agents;
 pub mod assets;
+pub mod attachments;
 pub mod audits;
 pub mod auth;
+pub mod catalog;
 pub mod google;
 pub mod import;
 pub mod invitations;
+pub mod notifications;
 pub mod people;
+pub mod plans;
 pub mod reports;
 pub mod settings;
 pub mod sites;
 pub mod users;
+pub mod warranties;
 pub mod work_orders;
 
 use axum::extract::State;
@@ -39,6 +45,7 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/auth/password-reset/request", post(auth::request_password_reset))
         .route("/api/auth/password-reset/confirm", post(auth::reset_password))
         .route("/api/invitations/accept", post(invitations::accept))
+        .route("/api/agent/pair", post(agents::pair))
         .route_layer(from_fn_with_state(state.clone(), web::rate_limit));
 
     Router::new()
@@ -66,6 +73,37 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/assets/{id}/events", get(assets::events))
         .route("/api/assets/{id}/assign", post(assets::assign))
         .route("/api/assets/{id}/return", post(assets::return_asset))
+        .route("/api/categories", get(catalog::list_categories).post(catalog::create_category))
+        .route("/api/categories/{id}", patch(catalog::update_category).delete(catalog::delete_category))
+        .route("/api/tags", get(catalog::list_tags))
+        .route("/api/tags/{id}", patch(catalog::update_tag).delete(catalog::delete_tag))
+        .route("/api/custom-fields", get(catalog::list_fields).post(catalog::create_field))
+        .route("/api/custom-fields/{id}", patch(catalog::update_field).delete(catalog::delete_field))
+        .route(
+            "/api/assets/{id}/attachments",
+            get(attachments::list)
+                .post(attachments::upload)
+                .layer(axum::extract::DefaultBodyLimit::max(state.config.max_upload_bytes + 256 * 1024)),
+        )
+        .route("/api/attachments/{id}", get(attachments::download).delete(attachments::delete))
+        .route("/api/assets/{id}/warranties", get(warranties::list).post(warranties::create))
+        .route("/api/warranties/{id}", patch(warranties::update).delete(warranties::delete))
+        .route("/api/notifications", get(notifications::list))
+        .route("/api/notifications/read-all", post(notifications::read_all))
+        .route("/api/notifications/{id}/read", post(notifications::read))
+        .route("/api/deadlines", get(notifications::deadlines))
+        .route("/api/insights", get(notifications::insights))
+        .route("/api/plan", get(plans::get))
+        .route("/api/billing/checkout", post(plans::checkout))
+        .route("/api/agents", get(agents::list_agents))
+        .route("/api/agents/pairing-codes", post(agents::create_pairing_code))
+        .route("/api/agents/{id}", patch(agents::update_agent).delete(agents::revoke_agent))
+        .route("/api/discovered-devices", get(agents::list_devices))
+        .route("/api/discovered-devices/{id}/add", post(agents::add_device))
+        .route("/api/discovered-devices/{id}/link", post(agents::link_device))
+        .route("/api/discovered-devices/{id}/{action}", post(agents::set_device_state))
+        .route("/api/agent/status", get(agents::status))
+        .route("/api/agent/report", post(agents::report))
         .route("/api/people", get(people::list).post(people::create))
         .route("/api/people/{id}", patch(people::update))
         .route("/api/audits", get(audits::list).post(audits::start))

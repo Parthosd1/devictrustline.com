@@ -13,24 +13,16 @@ use crate::validate::{path_uuid, Input, Opt, Str, DATE};
 use crate::web::Body;
 use crate::AppState;
 
-pub const ASSET_TYPES: &[&str] = &[
-    "Laptop",
-    "Desktop",
-    "Workstation",
-    "Monitor",
-    "Scanner",
-    "Printer",
-    "Docking Station",
-    "Phone",
-    "Tablet",
-    "Network",
-    "Accessory",
-    "Other",
-];
 pub const ASSET_STATUSES: &[&str] = &["Available", "Deployed", "Maintenance", "Retired"];
+pub const CONDITIONS: &[&str] = &["New", "Good", "Fair", "Poor", "Broken"];
+
+fn currency_check(s: &str) -> Option<&'static str> {
+    (s.len() != 3 || !s.chars().all(|c| c.is_ascii_alphabetic())).then_some("Use a 3-letter currency code, like USD")
+}
 
 /// API field, column, and the cast that types a text parameter for that column. Every editable field.
 const COLUMNS: &[(&str, &str, &str)] = &[
+    ("assetTag", "asset_tag", ""),
     ("name", "name", ""),
     ("type", "type", ""),
     ("serial", "serial", ""),
@@ -43,9 +35,16 @@ const COLUMNS: &[(&str, &str, &str)] = &[
     ("notes", "notes", ""),
     ("purchaseDate", "purchase_date", "::date"),
     ("warrantyExpires", "warranty_expires", "::date"),
+    ("condition", "condition", ""),
+    ("ownerId", "owner_id", "::uuid"),
+    ("purchasePrice", "purchase_price", "::numeric"),
+    ("currency", "currency", ""),
+    ("seller", "seller", ""),
+    ("returnDeadline", "return_deadline", "::date"),
+    ("maintenanceDue", "maintenance_due", "::date"),
 ];
 
-pub const SELECT: &str = r#"
+pub const SELECT_TEMPLATE: &str = r#"
   SELECT a.id, a.asset_tag AS "assetTag", a.name, a.type, a.serial, a.manufacturer, a.model, a.status,
          a.building_id AS "buildingId", b.name AS "buildingName",
          a.location_id AS "locationId", l.name AS "locationName",
@@ -53,12 +52,27 @@ pub const SELECT: &str = r#"
          a.assigned_person_id AS "assignedPersonId", pe.name AS "assignedPersonName", a.assigned_at AS "assignedAt",
          (SELECT count(*)::int FROM assets c WHERE c.parent_asset_id = a.id) AS "childCount",
          a.notes, a.purchase_date AS "purchaseDate", a.warranty_expires AS "warrantyExpires",
+         a.category_id AS "categoryId", a.condition, a.owner_id AS "ownerId", ow.name AS "ownerName",
+         a.purchase_price AS "purchasePrice", a.currency, a.seller, a.return_deadline AS "returnDeadline",
+         a.maintenance_due AS "maintenanceDue", a.custom, a.loan_due AS "loanDue",
+         WARRANTY_STATUS AS "warrantyStatus",
+         COALESCE((SELECT json_agg(t.name ORDER BY lower(t.name)) FROM asset_tags x JOIN tags t ON t.id = x.tag_id
+                    WHERE x.asset_id = a.id), '[]') AS tags,
+         (SELECT count(*)::int FROM attachments f WHERE f.asset_id = a.id) AS "attachmentCount",
+         (SELECT f.id FROM attachments f WHERE f.asset_id = a.id AND f.kind = 'photo' ORDER BY f.created_at LIMIT 1) AS "photoId",
          a.created_at AS "createdAt", a.updated_at AS "updatedAt"
     FROM assets a
+    JOIN organizations o ON o.id = a.org_id
+    LEFT JOIN users ow ON ow.id = a.owner_id
     LEFT JOIN buildings b ON b.id = a.building_id
     LEFT JOIN locations l ON l.id = a.location_id
     LEFT JOIN assets pa ON pa.id = a.parent_asset_id
     LEFT JOIN people pe ON pe.id = a.assigned_person_id"#;
+
+/// The item columns every asset endpoint returns.
+pub static SELECT: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    SELECT_TEMPLATE.replace("WARRANTY_STATUS", &crate::routes::warranties::status_sql("a.warranty_expires"))
+});
 
 /// The editable fields a request sent, in column order. Values are text or null.
 struct Fields(Vec<(&'static str, Opt<String>)>);
@@ -83,11 +97,80 @@ fn uuid_text(o: Opt<Uuid>) -> Opt<String> {
     }
 }
 
+fn money_text(o: Opt<f64>) -> Opt<String> {
+    match o {
+        Opt::Val(n) => Opt::Val(format!("{n:.2}")),
+        Opt::Null => Opt::Null,
+        Opt::Absent => Opt::Absent,
+    }
+}
+
+/// Fields set alongside the columns: tags (replaced as a set) and custom field values (merged).
+struct Extras {
+    tags: Option<Vec<String>>,
+    custom: Option<serde_json::Map<String, Value>>,
+}
+
+fn extras(input: &mut Input) -> Extras {
+    let tags = input.raw_value("tags").and_then(|v| {
+        let list: Option<Vec<String>> = v.as_array().and_then(|a| {
+            a.iter()
+                .map(|t| t.as_str().map(|t| t.trim().to_string()).filter(|t| (1..=40).contains(&t.chars().count())))
+                .collect()
+        });
+        match list {
+            Some(mut l) if l.len() <= 20 => {
+                l.sort_by_key(|t| t.to_lowercase());
+                l.dedup_by_key(|t| t.to_lowercase());
+                Some(l)
+            }
+            _ => {
+                input.fail("tags", "Up to 20 tags, each 1 to 40 characters");
+                None
+            }
+        }
+    });
+    let custom = input.raw_value("custom").and_then(|v| match v {
+        Value::Object(m) => Some(m),
+        _ => {
+            input.fail("custom", "Expected object");
+            None
+        }
+    });
+    Extras { tags, custom }
+}
+
+/// Finishes validation together with the category check, so every problem is reported at once.
+/// The category a request names must exist in the workspace; its stored spelling is used.
+async fn finish_validation(input: Input, db: &mut Db, org: Uuid, fields: &mut Fields) -> Result<()> {
+    let mut issues = match input.strict() {
+        Ok(()) => vec![],
+        Err(AppError::Invalid(issues)) => issues,
+        Err(e) => return Err(e),
+    };
+    if let Opt::Val(name) = fields.get("type").clone() {
+        match crate::routes::catalog::resolve_category(db, org, &name).await? {
+            Some(canonical) => fields.set("type", Opt::Val(canonical)),
+            None => issues.push(crate::validate::Issue::new(
+                "type",
+                format!("\"{name}\" is not a category in this workspace. Add it under Categories first."),
+            )),
+        }
+    }
+    if issues.is_empty() {
+        Ok(())
+    } else {
+        Err(AppError::Invalid(issues))
+    }
+}
+
 fn asset_fields(input: &mut Input, partial: bool) -> Fields {
     let name = if partial { Str::req(1, 160).optional() } else { Str::req(1, 160) };
+    let kind = if partial { Str::req(1, 80).optional() } else { Str::req(1, 80) };
     let mut f = vec![
+        ("assetTag", input.str("assetTag", Str::req(1, 40).optional())),
         ("name", input.str("name", name)),
-        ("type", input.one_of("type", ASSET_TYPES, partial, false)),
+        ("type", input.str("type", kind)),
         ("serial", input.str("serial", Str::text(120))),
         ("manufacturer", input.str("manufacturer", Str::text(120))),
         ("model", input.str("model", Str::text(120))),
@@ -98,15 +181,26 @@ fn asset_fields(input: &mut Input, partial: bool) -> Fields {
         ("notes", input.str("notes", Str::text(2000))),
         ("purchaseDate", input.str("purchaseDate", DATE)),
         ("warrantyExpires", input.str("warrantyExpires", DATE)),
+        ("condition", input.one_of("condition", CONDITIONS, true, true)),
+        ("ownerId", uuid_text(input.uuid("ownerId", true, true))),
+        ("purchasePrice", money_text(input.money("purchasePrice"))),
+        ("currency", input.str("currency", Str::text(3).check(currency_check))),
+        ("seller", input.str("seller", Str::text(160))),
+        ("returnDeadline", input.str("returnDeadline", DATE)),
+        ("maintenanceDue", input.str("maintenanceDue", DATE)),
     ];
-    if !partial && f[5].1.is_absent() {
-        f[5].1 = Opt::Val("Available".into());
+    if let Opt::Val(c) = &mut f.iter_mut().find(|(k, _)| *k == "currency").unwrap().1 {
+        *c = c.to_uppercase();
     }
-    Fields(f)
+    let mut fields = Fields(f);
+    if !partial && fields.get("status").is_absent() {
+        fields.set("status", Opt::Val("Available".into()));
+    }
+    fields
 }
 
 pub async fn find_asset(db: &mut Db, org_id: Uuid, id: Uuid) -> Result<Value> {
-    Q::new(format!("{SELECT} WHERE a.org_id = $1 AND a.id = $2"))
+    Q::new(format!("{} WHERE a.org_id = $1 AND a.id = $2", *SELECT))
         .bind(org_id)
         .bind(id)
         .opt(db)
@@ -175,11 +269,14 @@ pub async fn list(
     let mut input = Input::query(&query);
     let q = input.str("q", Str::req(0, 200).optional());
     let status = input.one_of("status", ASSET_STATUSES, true, false);
-    let kind = input.one_of("type", ASSET_TYPES, true, false);
+    let kind = input.str("type", Str::req(1, 80).optional());
+    let tag = input.str("tag", Str::req(1, 40).optional());
     let building = input.uuid("buildingId", true, false);
     let location = input.uuid("locationId", true, false);
     let person = input.uuid("personId", true, false);
     let parent = input.uuid("parentId", true, false);
+    let category = input.uuid("categoryId", true, false);
+    let owner = input.uuid("ownerId", true, false);
     let limit = input.int("limit", 1, 500, 100);
     let offset = input.int("offset", 0, i64::MAX, 0);
     input.done()?;
@@ -197,7 +294,7 @@ pub async fn list(
             q.chars().flat_map(|c| if "\\%_".contains(c) { vec!['\\', c] } else { vec![c] }).collect();
         text(
             "(a.asset_tag ILIKE ? OR a.name ILIKE ? OR a.serial ILIKE ? OR a.type ILIKE ?
-              OR a.model ILIKE ? OR b.name ILIKE ? OR l.name ILIKE ? OR pe.name ILIKE ?)",
+              OR a.model ILIKE ? OR a.manufacturer ILIKE ? OR b.name ILIKE ? OR l.name ILIKE ? OR pe.name ILIKE ?)",
             format!("%{escaped}%"),
             &mut wheres,
         );
@@ -206,7 +303,14 @@ pub async fn list(
         text("a.status = ?", s, &mut wheres);
     }
     if let Opt::Val(t) = kind {
-        text("a.type = ?", t, &mut wheres);
+        text("lower(a.type) = lower(?)", t, &mut wheres);
+    }
+    if let Opt::Val(t) = tag {
+        text(
+            "EXISTS (SELECT 1 FROM asset_tags x JOIN tags t ON t.id = x.tag_id WHERE x.asset_id = a.id AND lower(t.name) = lower(?))",
+            t,
+            &mut wheres,
+        );
     }
     let first_uuid = text_params.len() + 2;
     for (column, value) in [
@@ -214,6 +318,8 @@ pub async fn list(
         ("a.location_id", location),
         ("a.assigned_person_id", person),
         ("a.parent_asset_id", parent),
+        ("a.category_id", category),
+        ("a.owner_id", owner),
     ] {
         if let Opt::Val(u) = value {
             wheres.push(format!("{column} = ${}", first_uuid + uuid_params.len()));
@@ -233,7 +339,8 @@ pub async fn list(
     };
     let mut db = state.pool.acquire().await?;
     let items = build(format!(
-        "{SELECT} WHERE {where_sql} ORDER BY a.created_at DESC, a.asset_tag DESC LIMIT {limit} OFFSET {offset}"
+        "{} WHERE {where_sql} ORDER BY a.created_at DESC, a.asset_tag DESC LIMIT {limit} OFFSET {offset}",
+        *SELECT
     ))
     .all(&mut db)
     .await?;
@@ -265,8 +372,9 @@ pub fn parse_scanned_code(raw: &str) -> String {
 pub async fn find_by_code(db: &mut Db, org_id: Uuid, raw: &str) -> Result<Value> {
     let code = parse_scanned_code(raw);
     let mut asset = Q::new(format!(
-        "{SELECT} WHERE a.org_id = $1 AND (lower(a.asset_tag) = lower($2) OR lower(a.serial) = lower($2))
-          ORDER BY (lower(a.asset_tag) = lower($2)) DESC LIMIT 1"
+        "{} WHERE a.org_id = $1 AND (lower(a.asset_tag) = lower($2) OR lower(a.serial) = lower($2))
+          ORDER BY (lower(a.asset_tag) = lower($2)) DESC LIMIT 1",
+        *SELECT
     ))
     .bind(org_id)
     .bind(&code)
@@ -296,7 +404,7 @@ pub async fn get(State(state): State<AppState>, user: User, Path(id): Path<Strin
     let id = path_uuid(&id)?;
     let mut db = state.pool.acquire().await?;
     let mut asset = find_asset(&mut db, user.org_id, id).await?;
-    let children = Q::new(format!("{SELECT} WHERE a.org_id = $1 AND a.parent_asset_id = $2 ORDER BY a.asset_tag"))
+    let children = Q::new(format!("{} WHERE a.org_id = $1 AND a.parent_asset_id = $2 ORDER BY a.asset_tag", *SELECT))
         .bind(user.org_id)
         .bind(id)
         .all(&mut db)
@@ -327,10 +435,14 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     user.require("assets:write")?;
     let mut input = Input::body(&body);
     let mut fields = asset_fields(&mut input, false);
-    input.strict()?;
+    let extra = extras(&mut input);
     let org = user.org_id;
-
     let mut tx = state.pool.begin().await?;
+    finish_validation(input, &mut tx, org, &mut fields).await?;
+    crate::routes::plans::check_limit(&mut tx, org, "items").await?;
+    // The warranty date is stored as the item's manufacturer warranty.
+    let warranty = fields.get("warrantyExpires").clone();
+    fields.set("warrantyExpires", Opt::Absent);
     // A component placed inside a parent sits where the parent is unless told otherwise.
     if let Opt::Val(parent) = fields.get("parentId").clone() {
         if fields.get("buildingId").is_absent() && fields.get("locationId").is_absent() {
@@ -345,6 +457,11 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     .bind(org)
     .scalar(&mut tx)
     .await?;
+    let tag = match fields.get("assetTag").clone() {
+        Opt::Val(t) => t,
+        _ => format!("DT-{n}"),
+    };
+    fields.set("assetTag", Opt::Absent);
     let present: Vec<(&str, Value)> = fields.present().collect();
     let mut cols = vec!["org_id".to_string(), "asset_tag".into(), "created_by".into()];
     let mut placeholders = vec!["$1".to_string(), "$2".into(), "$3".into()];
@@ -358,15 +475,33 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     let mut q =
         Q::new(format!("INSERT INTO assets ({}) VALUES ({}) RETURNING id", cols.join(", "), placeholders.join(", ")))
             .bind(org)
-            .bind(format!("DT-{n}"))
+            .bind(&tag)
             .bind(user.id);
     for p in q_params {
         q = q.bind(p);
     }
     let id: Uuid = q.scalar(&mut tx).await?;
-    let created = find_asset(&mut tx, org, id).await?;
-    let changes: Map<String, Value> =
+    let mut changes: Map<String, Value> =
         present.iter().map(|(k, v)| (k.to_string(), json!({ "from": null, "to": v }))).collect();
+    if let Some(custom) = &extra.custom {
+        let custom = crate::routes::catalog::check_custom(&mut tx, org, custom).await?;
+        Q::new("UPDATE assets SET custom = jsonb_strip_nulls($3) WHERE org_id = $1 AND id = $2")
+            .bind(org)
+            .bind(id)
+            .bind(&custom)
+            .run(&mut tx)
+            .await?;
+        changes.insert("custom".into(), json!({ "from": null, "to": custom }));
+    }
+    if let Some(tags) = extra.tags.filter(|t| !t.is_empty()) {
+        crate::routes::catalog::set_tags(&mut tx, org, id, &tags).await?;
+        changes.insert("tags".into(), json!({ "from": null, "to": tags }));
+    }
+    if let Opt::Val(date) = &warranty {
+        crate::routes::warranties::set_primary(&mut tx, org, id, Some(date)).await?;
+        changes.insert("warrantyExpires".into(), json!({ "from": null, "to": date }));
+    }
+    let created = find_asset(&mut tx, org, id).await?;
     record_event(&mut tx, org, id, user.id, "created", Value::Object(changes)).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(created)))
@@ -382,14 +517,18 @@ pub async fn update(
     let id = path_uuid(&id)?;
     let mut input = Input::body(&body);
     let mut fields = asset_fields(&mut input, true);
-    input.strict()?;
+    let extra = extras(&mut input);
     let org = user.org_id;
-
     let mut tx = state.pool.begin().await?;
+    finish_validation(input, &mut tx, org, &mut fields).await?;
     let current = Q::new(
-        r#"SELECT name, type, serial, manufacturer, model, status, building_id AS "buildingId",
+        r#"SELECT asset_tag AS "assetTag", name, type, serial, manufacturer, model, status, building_id AS "buildingId",
                   location_id AS "locationId", parent_asset_id AS "parentId", notes,
-                  purchase_date AS "purchaseDate", warranty_expires AS "warrantyExpires"
+                  purchase_date AS "purchaseDate", warranty_expires AS "warrantyExpires",
+                  condition, owner_id AS "ownerId", purchase_price::text AS "purchasePrice", currency, seller,
+                  return_deadline AS "returnDeadline", maintenance_due AS "maintenanceDue", custom,
+                  COALESCE((SELECT json_agg(t.name ORDER BY lower(t.name)) FROM asset_tags x JOIN tags t ON t.id = x.tag_id
+                             WHERE x.asset_id = assets.id), '[]') AS tags
              FROM assets WHERE org_id = $1 AND id = $2 FOR UPDATE"#,
     )
     .bind(org)
@@ -420,6 +559,13 @@ pub async fn update(
         }
     }
     let mut changes = Map::new();
+    if let Some(to) = fields.get("warrantyExpires").to_json() {
+        if to != current["warrantyExpires"] {
+            crate::routes::warranties::set_primary(&mut tx, org, id, to.as_str()).await?;
+            changes.insert("warrantyExpires".into(), json!({ "from": current["warrantyExpires"], "to": to }));
+        }
+        fields.set("warrantyExpires", Opt::Absent);
+    }
     let mut assign = Assign::new(3);
     for (key, to) in fields.present() {
         if to != current[key] {
@@ -429,9 +575,35 @@ pub async fn update(
         }
     }
     let moved = changes.contains_key("buildingId") || changes.contains_key("locationId");
-    if !changes.is_empty() {
+    if let Some(custom) = &extra.custom {
+        let patch = crate::routes::catalog::check_custom(&mut tx, org, custom).await?;
+        let next: Value = Q::new(
+            "UPDATE assets SET custom = jsonb_strip_nulls(custom || $3), updated_at = now()
+              WHERE org_id = $1 AND id = $2 RETURNING custom",
+        )
+        .bind(org)
+        .bind(id)
+        .bind(&patch)
+        .scalar(&mut tx)
+        .await?;
+        if next != current["custom"] {
+            changes.insert("custom".into(), json!({ "from": current["custom"], "to": next }));
+        }
+    }
+    if let Some(tags) = &extra.tags {
+        let before: Vec<String> = serde_json::from_value(current["tags"].clone()).unwrap_or_default();
+        let lower = |v: &[String]| v.iter().map(|t| t.to_lowercase()).collect::<Vec<_>>();
+        if lower(&before) != lower(tags) {
+            crate::routes::catalog::set_tags(&mut tx, org, id, tags).await?;
+            changes.insert("tags".into(), json!({ "from": before, "to": tags }));
+        }
+    }
+    let column_changes = changes.keys().any(|k| k != "custom" && k != "tags" && k != "warrantyExpires");
+    if column_changes {
         let sql = format!("UPDATE assets SET {}, updated_at = now() WHERE org_id = $1 AND id = $2", assign.sql());
         assign.bind_to(Q::new(sql).bind(org).bind(id)).run(&mut tx).await?;
+    }
+    if !changes.is_empty() {
         let kind = if changes.contains_key("status") { "status_changed" } else { "updated" };
         record_event(&mut tx, org, id, user.id, kind, Value::Object(changes)).await?;
     }
@@ -591,10 +763,18 @@ pub async fn assign(
     let person_id = input.uuid("personId", false, false);
     let include = input.boolean_or("includeComponents", true);
     let note = input.str("note", Str::text(500)).into_option();
+    // When a loaned item is due back, if it is a loan.
+    let due = input.str("dueDate", DATE).into_option();
     input.strict()?;
     let mut tx = state.pool.begin().await?;
     let person = find_person(&mut tx, user.org_id, person_id.into_option().unwrap()).await?;
     set_assignment(&mut tx, &user, id, Some(&person), "", include, note).await?;
+    Q::new("UPDATE assets SET loan_due = $3::date WHERE org_id = $1 AND id = $2")
+        .bind(user.org_id)
+        .bind(id)
+        .bind(due)
+        .run(&mut tx)
+        .await?;
     let asset = find_asset(&mut tx, user.org_id, id).await?;
     tx.commit().await?;
     Ok(Json(asset))
@@ -615,6 +795,12 @@ pub async fn return_asset(
     input.strict()?;
     let mut tx = state.pool.begin().await?;
     set_assignment(&mut tx, &user, id, None, &status, include, note).await?;
+    Q::new(
+        "UPDATE assets SET loan_due = NULL WHERE org_id = $1 AND assigned_person_id IS NULL AND loan_due IS NOT NULL",
+    )
+    .bind(user.org_id)
+    .run(&mut tx)
+    .await?;
     let asset = find_asset(&mut tx, user.org_id, id).await?;
     tx.commit().await?;
     Ok(Json(asset))

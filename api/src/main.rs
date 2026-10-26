@@ -9,6 +9,7 @@ mod config;
 mod db;
 mod error;
 mod mail;
+mod reminders;
 mod routes;
 mod scheduler;
 mod tokens;

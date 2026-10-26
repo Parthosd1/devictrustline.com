@@ -14,7 +14,6 @@ pub fn hash(token: &str) -> Vec<u8> {
 }
 
 /// A short code a person types (agent pairing). Unambiguous characters only.
-#[allow(dead_code)]
 pub fn short_code(len: usize) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     rand::random::<[u8; 32]>()[..len].iter().map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char).collect()

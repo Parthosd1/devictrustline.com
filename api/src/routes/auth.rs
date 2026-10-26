@@ -54,9 +54,11 @@ pub async fn start_session(
 
 /// Creates a workspace with `user_id` as its admin, plus its starting categories and reminder rules.
 pub async fn create_workspace(db: &mut Db, user_id: Uuid, name: &str, kind: &str) -> Result<Uuid> {
-    let org: Uuid = Q::new("INSERT INTO organizations (name, kind) VALUES ($1, $2) RETURNING id")
+    let plan = if kind == "personal" { "personal_basic" } else { "business" };
+    let org: Uuid = Q::new("INSERT INTO organizations (name, kind, plan) VALUES ($1, $2, $3) RETURNING id")
         .bind(name)
         .bind(kind)
+        .bind(plan)
         .scalar(&mut *db)
         .await?;
     Q::new("INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'admin')")
@@ -64,6 +66,7 @@ pub async fn create_workspace(db: &mut Db, user_id: Uuid, name: &str, kind: &str
         .bind(user_id)
         .run(&mut *db)
         .await?;
+    crate::routes::catalog::seed_workspace(db, org, kind).await?;
     Ok(org)
 }
 
@@ -137,7 +140,8 @@ async fn send_verification(state: &AppState, db: &mut Db, user_id: Uuid, email: 
         kind: "verify_email",
         dedupe_key: None,
     };
-    mail::enqueue(db, &state.config.mail, email).await
+    mail::enqueue(db, &state.config.mail, email).await?;
+    Ok(())
 }
 
 pub async fn config(State(state): State<AppState>) -> Json<Value> {

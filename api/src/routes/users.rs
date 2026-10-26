@@ -49,6 +49,7 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     input.done()?;
     let hash = auth::hash_password(password.unwrap()).await?;
     let mut tx = state.pool.begin().await?;
+    crate::routes::plans::check_limit(&mut tx, user.org_id, "members").await?;
     let id: Option<uuid::Uuid> = Q::new(
         "INSERT INTO users (email, name, password_hash) VALUES ($1::citext, $2, $3) ON CONFLICT (email) DO NOTHING RETURNING id",
     )

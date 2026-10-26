@@ -78,11 +78,14 @@ pub async fn run_scheduled_audits(pool: &PgPool, log: bool) -> Result<Vec<Value>
     Ok(started)
 }
 
-/// Background jobs that run every few seconds on every server: email delivery (and, later,
-/// reminders). Each job claims its rows with SKIP LOCKED, so instances never duplicate work.
+/// Background jobs that run every few seconds on every server: reminders and email delivery. Each job claims its rows with SKIP LOCKED, so instances never duplicate work.
 pub async fn run_jobs(pool: &PgPool, config: &Config) -> Result<Value> {
+    let (created, cancelled) = crate::reminders::sync(pool).await?;
+    let fired = crate::reminders::fire(pool, &config.mail).await?;
     let emails = crate::mail::deliver_due(pool, &config.mail).await?;
-    Ok(json!({ "emailsSent": emails }))
+    let mut done = crate::reminders::summary(created, cancelled, fired);
+    done["emailsSent"] = json!(emails);
+    Ok(done)
 }
 
 pub fn start(pool: PgPool, config: Config) {

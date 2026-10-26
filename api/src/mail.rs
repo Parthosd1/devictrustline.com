@@ -27,12 +27,13 @@ pub struct Email<'a> {
     pub dedupe_key: Option<String>,
 }
 
-/// Queues a message. With no email provider configured the row is recorded as `unavailable`.
-pub async fn enqueue(db: &mut Db, mail: &MailConfig, e: Email<'_>) -> Result<()> {
+/// Queues a message and returns its outbox id (None if one with the same dedupe key exists).
+/// With no email provider configured the row is recorded as `unavailable`.
+pub async fn enqueue(db: &mut Db, mail: &MailConfig, e: Email<'_>) -> Result<Option<i64>> {
     let status = if mail.available() { "queued" } else { "unavailable" };
     Q::new(
         "INSERT INTO email_outbox (org_id, user_id, to_address, subject, body_text, kind, dedupe_key, status)
-         VALUES ($1, $2, $3::citext, $4, $5, $6, $7, $8) ON CONFLICT (dedupe_key) DO NOTHING",
+         VALUES ($1, $2, $3::citext, $4, $5, $6, $7, $8) ON CONFLICT (dedupe_key) DO NOTHING RETURNING id",
     )
     .bind(e.org_id)
     .bind(e.user_id)
@@ -42,9 +43,9 @@ pub async fn enqueue(db: &mut Db, mail: &MailConfig, e: Email<'_>) -> Result<()>
     .bind(e.kind)
     .bind(e.dedupe_key)
     .bind(status)
-    .run(db)
-    .await?;
-    Ok(())
+    .scalars(db)
+    .await
+    .map(|ids| ids.into_iter().next())
 }
 
 enum Sender {

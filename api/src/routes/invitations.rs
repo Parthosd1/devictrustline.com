@@ -165,6 +165,7 @@ pub async fn accept(State(state): State<AppState>, parts: Parts, Body(body): Bod
         AppError::coded(400, "token_invalid", "This invitation has expired, was revoked or was already used.")
     })?;
     let org = uuid_of(&invite["org_id"]).unwrap();
+    crate::routes::plans::check_limit(&mut tx, org, "members").await?;
     let email = invite["email"].as_str().unwrap_or("").to_string();
     let existing: Option<Uuid> =
         Q::new("SELECT id FROM users WHERE email = $1::citext").bind(&email).scalars(&mut tx).await?.into_iter().next();

@@ -9,15 +9,16 @@ export TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgres://postgres:postgres@loca
 port="${TEST_PORT:-4100}"
 static_dir="$(mktemp -d)"
 log="$(mktemp)"
+files_dir="$(mktemp -d)"
 # A stand-in Google, so sign-in with Google runs end to end.
 oidc_port="${MOCK_OIDC_PORT:-4101}"
 MOCK_OIDC_PORT="$oidc_port" node tests/http/mock-oidc.js >/dev/null 2>&1 &
 oidc=$!
-DATABASE_URL="$TEST_DATABASE_URL" PORT="$port" STATIC_DIR="$static_dir" ALLOW_SIGNUP=true \
+DATABASE_URL="$TEST_DATABASE_URL" PORT="$port" STATIC_DIR="$static_dir" ATTACHMENTS_DIR="$files_dir" ALLOW_SIGNUP=true \
   AUTH_RATE_LIMIT=1000 DISABLE_SCHEDULER=true MAIL_MODE=capture APP_URL=http://app.test \
   GOOGLE_CLIENT_ID=test-client GOOGLE_CLIENT_SECRET=test-secret GOOGLE_ISSUER="http://127.0.0.1:$oidc_port" ./target/debug/devicetrustline >"$log" 2>&1 &
 server=$!
-trap 'kill $server $oidc 2>/dev/null; rm -rf "$static_dir" "$log"' EXIT
+trap 'kill $server $oidc 2>/dev/null; rm -rf "$static_dir" "$files_dir" "$log"' EXIT
 for _ in $(seq 1 50); do
   curl -sf "http://127.0.0.1:$port/api/health" >/dev/null && break
   kill -0 $server 2>/dev/null || { cat "$log"; exit 1; }

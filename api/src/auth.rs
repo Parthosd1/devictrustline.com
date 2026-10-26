@@ -32,6 +32,8 @@ const GRANTS: &[(&str, &[&str])] = &[
     ("users:read", &["admin", "manager"]),
     ("users:manage", &["admin"]),
     ("settings:manage", &["admin"]),
+    ("catalog:manage", &["admin", "manager"]),
+    ("devices:manage", &["admin", "manager"]),
 ];
 
 pub fn can(role: &str, permission: &str) -> bool {
