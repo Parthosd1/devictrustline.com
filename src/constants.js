@@ -1,4 +1,4 @@
-// Mirrors ASSET_TYPES and ASSET_STATUSES in server/src/routes/assets.js.
+// Mirrors ASSET_TYPES and ASSET_STATUSES in api/src/routes/assets.rs.
 export const ASSET_TYPES = [
   'Laptop', 'Desktop', 'Workstation', 'Monitor', 'Scanner', 'Printer', 'Docking Station',
   'Phone', 'Tablet', 'Network', 'Accessory', 'Other',

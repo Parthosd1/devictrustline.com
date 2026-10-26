@@ -1,0 +1,13 @@
+{
+  "name": "devicetrustline-http-tests",
+  "private": true,
+  "type": "module",
+  "description": "Black-box HTTP tests for the API. Run with api/scripts/test-http.sh.",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 *.test.js"
+  },
+  "devDependencies": {
+    "pg": "^8.16.3",
+    "supertest": "^7.1.4"
+  }
+}
