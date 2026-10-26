@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeftRight, Link2, Pencil, UserCheck, UserMinus } from 'lucide-react';
+import { ArrowLeftRight, Link2, Pencil, QrCode, UserCheck, UserMinus } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { AssetIcon, ErrorBanner, Modal, StatusBadge } from '../components.jsx';
+import { LabelSheet } from './Labels.jsx';
 
 const LABELS = {
   name: 'Name', type: 'Type', serial: 'Serial', manufacturer: 'Manufacturer', model: 'Model', status: 'Status',
@@ -98,6 +99,7 @@ export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChang
   const [events, setEvents] = useState(null);
   const [error, setError] = useState(null);
   const [assigning, setAssigning] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     Promise.all([api(`/assets/${initial.id}`), api(`/assets/${initial.id}/events`)])
@@ -120,6 +122,7 @@ export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChang
         <AssetIcon type={asset.type} size={22} />
         <StatusBadge status={asset.status} />
         <div className="detail-actions">
+          <button className="outline" onClick={() => setPrinting(true)}><QrCode size={15} /> Label</button>
           {writable && asset.status !== 'Retired' && !assigning && (
             <button className="outline" onClick={() => setAssigning(true)}>
               {asset.assignedPersonId ? <><UserMinus size={15} /> Check In</> : <><UserCheck size={15} /> Assign</>}
@@ -162,6 +165,7 @@ export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChang
           </div>
         </>
       )}
+      {printing && <LabelSheet assets={[asset]} onClose={() => setPrinting(false)} />}
       <h3 className="section-title">History</h3>
       <ol className="timeline">
         {events === null && !error && <li className="muted">Loading…</li>}

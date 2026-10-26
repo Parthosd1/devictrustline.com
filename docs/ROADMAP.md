@@ -8,7 +8,7 @@ Each phase ships as its own pull request (or a short series), keeps the existing
 | 1. Foundation | Node/Express API, PostgreSQL schema and migrations, sign-up/sign-in, five roles, organization isolation, buildings and locations, asset registry, append-only asset history, Docker, CI | **In review** |
 | 2. App on the API | Sign-in screen, inventory/buildings/maintenance pages backed by the API, user management, asset detail with history, UI polish. CSV export and search carry over. Audit checklists stay browser-only until phase 5 | **In review** |
 | 3. Assignments and relationships | Assign assets to people and workstations, check-out/check-in, parent-child assets (a workstation with its monitor, scanner and dock), moving a parent moves its children | **In review** |
-| 4. QR and barcode | Printable QR/barcode labels per asset tag, camera scanning in the browser, scan to look up, scan to verify, USB/Bluetooth scanner input | Planned |
+| 4. QR and barcode | Printable QR/barcode labels per asset tag, camera scanning in the browser, scan to look up, USB/Bluetooth scanner input. Scan-to-verify lands with audits in phase 5 | **In review** |
 | 5. Audits | Weekly and monthly audits run independently, each with its own scope, schedule, assignee, scan-based verification, discrepancy list (missing, unexpected, wrong location) and a locked, immutable record when closed | Planned |
 | 6. Maintenance | Work orders with priority, assignee, vendor, cost and notes; status flow; full maintenance history on each asset | Planned |
 | 7. Reporting and import | Dashboard KPIs from live data, audit and maintenance reports, CSV import with validation and preview, CSV/PDF export, scheduled email summaries | Planned |
