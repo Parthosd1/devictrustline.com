@@ -6,17 +6,19 @@ import { ASSET_STATUSES, ASSET_TYPES } from '../constants.js';
 
 const EMPTY = {
   name: '', type: 'Laptop', serial: '', manufacturer: '', model: '', status: 'Available',
-  buildingId: '', locationId: '', purchaseDate: '', warrantyExpires: '', notes: '',
+  buildingId: '', locationId: '', parentId: '', purchaseDate: '', warrantyExpires: '', notes: '',
 };
 
 // Create (asset is null) or edit an asset.
-export function AssetForm({ asset, buildings, onClose, onSaved }) {
+export function AssetForm({ asset, buildings, assets, onClose, onSaved }) {
   const [form, setForm] = useState(() => (asset
     ? Object.fromEntries(Object.keys(EMPTY).map((k) => [k, asset[k] ?? '']))
     : { ...EMPTY, buildingId: buildings[0]?.id ?? '' }));
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const locations = buildings.find((b) => b.id === form.buildingId)?.locations ?? [];
+  const parents = assets.filter((a) => a.id !== asset?.id && a.status !== 'Retired');
+  const placedByParent = !!form.parentId && form.parentId !== (asset?.parentId ?? '');
   const set = (key) => (e) => {
     const value = e.target.value;
     setForm((f) => ({ ...f, [key]: value, ...(key === 'buildingId' && { locationId: '' }) }));
@@ -28,6 +30,8 @@ export function AssetForm({ asset, buildings, onClose, onSaved }) {
     setError(null);
     const body = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === '' ? null : v]));
     body.name = form.name;
+    // Joining a parent: let the server place this asset where its parent is.
+    if (placedByParent) { delete body.buildingId; delete body.locationId; }
     try {
       const saved = asset
         ? await api(`/assets/${asset.id}`, { method: 'PATCH', body })
@@ -55,14 +59,20 @@ export function AssetForm({ asset, buildings, onClose, onSaved }) {
           </Field>
           <Field label="Manufacturer"><input value={form.manufacturer} onChange={set('manufacturer')} placeholder="Dell" /></Field>
           <Field label="Model"><input value={form.model} onChange={set('model')} placeholder="Latitude 5440" /></Field>
+          <Field label="Part of (parent asset)" wide>
+            <select value={form.parentId} onChange={set('parentId')}>
+              <option value="">Standalone</option>
+              {parents.map((a) => <option key={a.id} value={a.id}>{a.assetTag} · {a.name}{a.locationName ? ` · ${a.locationName}` : ''}</option>)}
+            </select>
+          </Field>
           <Field label="Building">
-            <select value={form.buildingId} onChange={set('buildingId')}>
+            <select value={form.buildingId} onChange={set('buildingId')} disabled={placedByParent}>
               <option value="">No building</option>
               {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </Field>
           <Field label="Location / Station">
-            <select value={form.locationId} onChange={set('locationId')} disabled={!form.buildingId}>
+            <select value={form.locationId} onChange={set('locationId')} disabled={!form.buildingId || placedByParent}>
               <option value="">Unassigned</option>
               {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
@@ -71,6 +81,7 @@ export function AssetForm({ asset, buildings, onClose, onSaved }) {
           <Field label="Warranty Expires"><input type="date" value={form.warrantyExpires} onChange={set('warrantyExpires')} /></Field>
           <Field label="Notes" wide><textarea rows={3} value={form.notes} onChange={set('notes')} /></Field>
         </div>
+        {placedByParent && <p className="hint">This asset will move to its parent's building and location, and will follow the parent when it moves.</p>}
         {buildings.length === 0 && <p className="hint">Tip: add buildings and stations on the Buildings page to place assets.</p>}
         <div className="modal-actions">
           <button type="button" className="outline" onClick={onClose}>Cancel</button>

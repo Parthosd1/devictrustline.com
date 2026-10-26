@@ -7,6 +7,7 @@ import { authenticate, checkOrigin } from './middleware/auth.js';
 import { errorHandler } from './middleware/errors.js';
 import { assetsRouter } from './routes/assets.js';
 import { authRouter } from './routes/auth.js';
+import { peopleRouter } from './routes/people.js';
 import { sitesRouter } from './routes/sites.js';
 import { usersRouter } from './routes/users.js';
 
@@ -32,6 +33,7 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/users', authenticate, usersRouter);
   app.use('/api/assets', authenticate, assetsRouter);
+  app.use('/api/people', authenticate, peopleRouter);
   app.use('/api', authenticate, sitesRouter);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
