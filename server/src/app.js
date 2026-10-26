@@ -11,6 +11,7 @@ import { authRouter } from './routes/auth.js';
 import { peopleRouter } from './routes/people.js';
 import { sitesRouter } from './routes/sites.js';
 import { usersRouter } from './routes/users.js';
+import { workOrdersRouter } from './routes/workOrders.js';
 
 export function createApp() {
   const app = express();
@@ -36,6 +37,7 @@ export function createApp() {
   app.use('/api/assets', authenticate, assetsRouter);
   app.use('/api/people', authenticate, peopleRouter);
   app.use('/api/audits', authenticate, auditsRouter);
+  app.use('/api/work-orders', authenticate, workOrdersRouter);
   app.use('/api', authenticate, sitesRouter);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));

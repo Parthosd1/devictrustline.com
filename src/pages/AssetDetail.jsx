@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeftRight, Link2, Pencil, QrCode, UserCheck, UserMinus } from 'lucide-react';
+import { ArrowLeftRight, Link2, Pencil, QrCode, UserCheck, UserMinus, Wrench } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { AssetIcon, ErrorBanner, Modal, StatusBadge } from '../components.jsx';
 import { LabelSheet } from './Labels.jsx';
+import { NewWorkOrder, WorkOrderDetail, WorkOrderList } from './Maintenance.jsx';
 
 const LABELS = {
   name: 'Name', type: 'Type', serial: 'Serial', manufacturer: 'Manufacturer', model: 'Model', status: 'Status',
@@ -22,6 +23,12 @@ function describe(event) {
     case 'assigned': return `Assigned to ${c.assignedTo.to.name}${via}${note}`;
     case 'returned': return `Returned from ${c.assignedTo.from?.name ?? 'assignment'}${c.status ? `, now ${c.status.to}` : ''}${via}${note}`;
     case 'moved_with_parent': return 'Moved with its parent asset';
+    case 'maintenance_opened': return `Work order ${c.workOrder.to.number} opened: ${c.workOrder.to.title}`;
+    case 'maintenance_closed': return `Work order ${c.workOrder.to.number} ${c.workOrder.to.status}: ${c.workOrder.to.resolution}`;
+    case 'audited': {
+      const r = { verified: 'verified', wrong_location: 'found in the wrong location', missing: 'missing' }[c.audit.to.result];
+      return `${c.audit.to.name}: ${c.audit.to.expected ? r : 'found though not expected'}`;
+    }
     case 'status_changed': {
       const others = Object.keys(c).length - 1;
       return `Status ${c.status.from} → ${c.status.to}${others ? `, plus ${others} more change(s)` : ''}`;
@@ -93,18 +100,24 @@ function AssignPanel({ asset, onDone, onCancel }) {
   );
 }
 
-export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChanged }) {
+export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChanged, onRefresh }) {
   const { can } = useAuth();
   const [asset, setAsset] = useState(initial);
   const [events, setEvents] = useState(null);
   const [error, setError] = useState(null);
   const [assigning, setAssigning] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [workOrders, setWorkOrders] = useState([]);
+  const [reporting, setReporting] = useState(false);
+  const [openWo, setOpenWo] = useState(null);
+  const loadWorkOrders = () => api(`/work-orders?assetId=${initial.id}`).then((r) => setWorkOrders(r.items)).catch(() => {});
 
   useEffect(() => {
     Promise.all([api(`/assets/${initial.id}`), api(`/assets/${initial.id}/events`)])
       .then(([a, e]) => { setAsset(a); setEvents(e.items); })
       .catch(setError);
+    loadWorkOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.id]);
 
   const rows = [
@@ -123,6 +136,9 @@ export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChang
         <StatusBadge status={asset.status} />
         <div className="detail-actions">
           <button className="outline" onClick={() => setPrinting(true)}><QrCode size={15} /> Label</button>
+          {can('maintenance:write') && asset.status !== 'Retired' && (
+            <button className="outline" onClick={() => setReporting(true)}><Wrench size={15} /> Report issue</button>
+          )}
           {writable && asset.status !== 'Retired' && !assigning && (
             <button className="outline" onClick={() => setAssigning(true)}>
               {asset.assignedPersonId ? <><UserMinus size={15} /> Check In</> : <><UserCheck size={15} /> Assign</>}
@@ -165,6 +181,14 @@ export function AssetDetail({ asset: initial, onClose, onEdit, onSelect, onChang
           </div>
         </>
       )}
+      {workOrders.length > 0 && (
+        <>
+          <h3 className="section-title"><Wrench size={14} /> Work orders ({workOrders.length})</h3>
+          <div className="panel nested"><WorkOrderList items={workOrders} onOpen={setOpenWo} compact /></div>
+        </>
+      )}
+      {reporting && <NewWorkOrder asset={asset} onClose={() => setReporting(false)} onCreated={(wo) => { setReporting(false); onRefresh(); onChanged({ ...asset, status: 'Maintenance' }); }} />}
+      {openWo && <WorkOrderDetail id={openWo} onClose={() => setOpenWo(null)} onChanged={() => { loadWorkOrders(); onRefresh(); }} onSelectAsset={onSelect} />}
       {printing && <LabelSheet assets={[asset]} onClose={() => setPrinting(false)} />}
       <h3 className="section-title">History</h3>
       <ol className="timeline">
