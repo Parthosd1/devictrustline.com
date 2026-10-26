@@ -21,7 +21,7 @@ const PAGES = {
   Dashboard: { icon: LayoutDashboard, title: 'Asset Overview', blurb: 'Your equipment, locations and audit activity in one place.' },
   Inventory: { icon: Boxes, title: 'Inventory', blurb: 'Search and manage every asset across your facilities.' },
   Scan: { icon: ScanLine, title: 'Scan', blurb: 'Find any asset by scanning its label or barcode.' },
-  Audits: { icon: ClipboardCheck, title: 'Audits', blurb: 'Track physical verification for weekly and monthly inventory reviews.' },
+  Audits: { icon: ClipboardCheck, title: 'Audits', blurb: 'Run weekly and monthly physical audits by scanning, and keep a permanent record of each.' },
   Buildings: { icon: Building2, title: 'Buildings', blurb: 'A clear view of your equipment by facility and location.' },
   People: { icon: Contact, title: 'People', blurb: 'Employees and staff who can be assigned equipment.' },
   Maintenance: { icon: Wrench, title: 'Maintenance', blurb: 'Keep track of devices requiring maintenance.' },
@@ -121,10 +121,10 @@ export function App() {
             )}
           </div>
           <ErrorBanner error={error} />
-          {page === 'Dashboard' && <Dashboard assets={assets} loading={loading} onSelect={setSelected} go={go} orgId={user.organization.id} />}
+          {page === 'Dashboard' && <Dashboard assets={assets} loading={loading} onSelect={setSelected} go={go} version={version} />}
           {page === 'Inventory' && <Inventory version={version} buildings={buildings} onSelect={setSelected} />}
           {page === 'Scan' && <Scan onSelect={setSelected} />}
-          {page === 'Audits' && <Audits assets={assets} orgId={user.organization.id} />}
+          {page === 'Audits' && <Audits buildings={buildings} onSelect={setSelected} onChanged={refresh} />}
           {page === 'Buildings' && <Buildings buildings={buildings} onChanged={refresh} />}
           {page === 'Maintenance' && <Maintenance assets={assets} loading={loading} onSelect={setSelected} />}
           {page === 'People' && <People onSelect={setSelected} version={version} />}

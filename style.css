@@ -115,3 +115,29 @@ tr.clickable:hover td{background:#f8faff}
   .label-sheet{position:absolute;left:0;top:0;width:100%;grid-template-columns:repeat(3,1fr);gap:4mm}
   .label{border:1px solid #999}
 }
+
+/* Phase 5: recorded audits */
+.run-switcher,.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.chips{padding:20px 25px 6px;margin:0}
+.chip{border:1px solid #dce3ef;background:#fff;color:#4d5e79;border-radius:20px;padding:7px 13px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:5px}
+.chip.on{background:#3169ed;border-color:#3169ed;color:#fff}
+.start-audit .filters{padding-bottom:24px}
+.run-head .panel-head h2 .count{display:inline-flex;align-items:center;gap:4px;vertical-align:middle}
+.audit-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:0 25px 18px}
+.audit-stats>div{background:#f8fafd;border-radius:10px;padding:12px 14px}
+.audit-stats strong{display:block;font:800 24px 'Plus Jakarta Sans',sans-serif;color:#1a2945}
+.audit-stats span{font-size:11px;color:#7c8ba3;font-weight:700}
+.audit-stats .good strong{color:#238753}
+.audit-stats .warn strong{color:#bc6a2e}
+.audit-stats .bad strong{color:#b03a2e}
+.run-progress{margin:0 25px 24px}
+.audit-scan{padding-top:22px}
+.audit-scan select{border:1px solid #dfe6f0;border-radius:9px;padding:10px 12px;color:#435470;background:#fff;font-size:12px}
+.scan-flash{display:flex;align-items:center;gap:10px;margin:0 25px 22px;padding:12px 14px;border-radius:10px;font-size:13px}
+.scan-flash.ok{background:#eaf8f0;color:#1d7546}
+.scan-flash.warn{background:#fff3e8;color:#9b5523}
+.status.missing{background:#fdeceb;color:#b03a2e}
+.link-like{border:0;background:transparent;text-align:left;padding:0;cursor:pointer;font:inherit}
+.link-like:hover strong{color:#3169ed}
+.tag{display:inline-block;margin-left:8px;font-size:10px;font-weight:800;background:#fff3e8;color:#9b5523;border-radius:5px;padding:2px 6px;vertical-align:middle}
+@media(max-width:720px){.audit-stats{grid-template-columns:repeat(2,1fr);padding:0 20px 16px}.chips{padding:16px 20px 4px}.scan-flash{margin:0 14px 18px}}

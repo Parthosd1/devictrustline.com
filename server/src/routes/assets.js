@@ -72,7 +72,7 @@ async function findAsset(db, orgId, id) {
   return asset;
 }
 
-const recordEvent = (db, { orgId, assetId, actorId, type, changes }) => db.query(
+export const recordEvent = (db, { orgId, assetId, actorId, type, changes }) => db.query(
   'INSERT INTO asset_events (org_id, asset_id, actor_id, event_type, changes) VALUES ($1, $2, $3, $4, $5)',
   [orgId, assetId, actorId, type, JSON.stringify(changes)],
 );
@@ -152,15 +152,20 @@ export function parseScannedCode(raw) {
 
 const lookupSchema = z.object({ code: z.string().trim().min(1).max(500) });
 
-assetsRouter.get('/lookup', requirePermission('assets:read'), route(async (req, res) => {
-  const code = parseScannedCode(lookupSchema.parse(req.query).code);
-  const { rows } = await query(
+// Finds the asset a scanned code refers to within one organization, preferring an asset tag match.
+export async function findByCode(db, orgId, raw) {
+  const code = parseScannedCode(raw);
+  const { rows: [asset] } = await db.query(
     `${SELECT} WHERE a.org_id = $1 AND (lower(a.asset_tag) = lower($2) OR lower(a.serial) = lower($2))
       ORDER BY (lower(a.asset_tag) = lower($2)) DESC LIMIT 1`,
-    [req.user.org_id, code],
+    [orgId, code],
   );
-  if (!rows[0]) throw new HttpError(404, `No asset matches “${code}”`);
-  res.json({ ...rows[0], matchedBy: rows[0].assetTag.toLowerCase() === code.toLowerCase() ? 'assetTag' : 'serial' });
+  if (!asset) throw new HttpError(404, `No asset matches “${code}”`);
+  return { ...asset, matchedBy: asset.assetTag.toLowerCase() === code.toLowerCase() ? 'assetTag' : 'serial' };
+}
+
+assetsRouter.get('/lookup', requirePermission('assets:read'), route(async (req, res) => {
+  res.json(await findByCode({ query }, req.user.org_id, lookupSchema.parse(req.query).code));
 }));
 
 assetsRouter.get('/:id', requirePermission('assets:read'), route(async (req, res) => {

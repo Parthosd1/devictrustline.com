@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertTriangle, ArrowRight, Boxes, CalendarDays, CheckCircle2, Monitor } from 'lucide-react';
+import { api } from '../api.js';
 import { AssetTable } from '../components.jsx';
-import { loadChecklist } from './Audits.jsx';
+import { progressOf } from './Audits.jsx';
 
 const SHOWN_TYPES = ['Laptop', 'Desktop', 'Scanner', 'Monitor', 'Accessory'];
 
-export function Dashboard({ assets, loading, onSelect, go, orgId }) {
+export function Dashboard({ assets, loading, onSelect, go, version }) {
+  const [audits, setAudits] = useState([]);
+  useEffect(() => { api('/audits?limit=50').then((r) => setAudits(r.items)).catch(() => setAudits([])); }, [version]);
   const active = assets.filter((a) => a.status !== 'Retired');
   const count = (status) => assets.filter((a) => a.status === status).length;
   const metrics = [
@@ -15,7 +18,6 @@ export function Dashboard({ assets, loading, onSelect, go, orgId }) {
     { label: 'Needs Attention', value: count('Maintenance'), icon: AlertTriangle, sub: 'In maintenance' },
   ];
   const types = [...SHOWN_TYPES, ...new Set(active.map((a) => a.type).filter((t) => !SHOWN_TYPES.includes(t)))];
-  const checklist = loadChecklist(orgId);
 
   return (
     <>
@@ -45,12 +47,23 @@ export function Dashboard({ assets, loading, onSelect, go, orgId }) {
         </section>
         <section className="panel">
           <div className="panel-head"><div><h2>Audit Snapshot</h2><p>Current verification progress</p></div><CalendarDays size={20} /></div>
-          {['Weekly', 'Monthly'].map((p) => {
-            const done = active.filter((a) => checklist[p].includes(a.id)).length;
+          {[['weekly', 'Weekly'], ['monthly', 'Monthly']].map(([key, label]) => {
+            const open = audits.filter((r) => r.period === key && r.status === 'open');
+            const last = audits.find((r) => r.period === key && r.status === 'closed');
+            const totals = open.reduce((t, r) => {
+              const p = progressOf(r);
+              return { found: t.found + p.found, expected: t.expected + p.expected };
+            }, { found: 0, expected: 0 });
             return (
-              <div className="audit-snapshot" key={p}>
-                <div><strong>{p} Audit</strong><small>{done} of {active.length} checked</small></div>
-                <div className="progress-track"><div style={{ width: `${active.length ? (done / active.length) * 100 : 0}%` }} /></div>
+              <div className="audit-snapshot" key={key}>
+                <div>
+                  <strong>{label} Audit</strong>
+                  <small>
+                    {open.length ? `${totals.found} of ${totals.expected} verified`
+                      : last ? `Last closed ${new Date(last.closedAt).toLocaleDateString()} · ${last.summary.missing} missing` : 'Not started yet'}
+                  </small>
+                </div>
+                <div className="progress-track"><div style={{ width: `${totals.expected ? (totals.found / totals.expected) * 100 : 0}%` }} /></div>
               </div>
             );
           })}

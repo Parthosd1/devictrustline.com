@@ -7,6 +7,8 @@ const GRANTS = {
   'sites:read': ['admin', 'manager', 'technician', 'auditor', 'viewer'],
   'sites:write': ['admin', 'manager'],
   'people:write': ['admin', 'manager', 'technician'],
+  'audits:read': ['admin', 'manager', 'technician', 'auditor', 'viewer'],
+  'audits:perform': ['admin', 'manager', 'auditor'],
   'users:read': ['admin', 'manager'],
   'users:manage': ['admin'],
 };
