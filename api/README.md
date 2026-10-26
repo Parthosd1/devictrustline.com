@@ -23,11 +23,15 @@ The Vite dev server proxies `/api` to `http://localhost:4000`.
 
 | Command | What it does |
 |---|---|
-| `devicetrustline` (or `serve`) | Runs migrations, the audit scheduler and the server |
+| `devicetrustline` (or `serve`) | Runs migrations, background jobs (reminders, email delivery, scheduled audits) and the server |
 | `devicetrustline migrate` | Applies pending migrations and exits |
 | `devicetrustline create-admin` | Creates an organization and its first admin from `ORG_NAME`, `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD` |
 | `devicetrustline seed` | Creates a demo workspace from `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` |
 | `devicetrustline run-scheduled-audits` | Opens any automatic audits that are due, once, and prints them as JSON |
+| `devicetrustline run-jobs` | Runs one round of background jobs and prints what it did (for cron, or with `DISABLE_SCHEDULER=true`) |
+| `devicetrustline plans` | Lists plans and their limits |
+| `devicetrustline set-plan-limit PLAN LIMIT VALUE` | Changes a plan limit (`items`, `members`, `storageMb`, `devices`; `none` removes it) |
+| `devicetrustline set-workspace-plan ADMIN_EMAIL PLAN` | Moves the workspaces this person administers (of the plan's kind) to that plan |
 | `devicetrustline healthcheck` | Exits 0 when the local server answers `/api/health` (used by the Docker health check) |
 
 With `cargo`, run them as `cargo run -- <command>`.
@@ -50,6 +54,7 @@ With `cargo`, run them as `cargo run -- <command>`.
 ```bash
 cargo test                    # unit tests
 ./scripts/test-http.sh        # starts the server and runs the HTTP tests in tests/http (needs Node 22)
+OLD_BIN=… ./scripts/test-deploy.sh   # fresh install, upgrade from the previous release, backup/restore
 ```
 
 The HTTP tests run against a real, disposable PostgreSQL database that is wiped on every run:
@@ -59,7 +64,7 @@ createdb devicetrustline_test
 TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/devicetrustline_test ./scripts/test-http.sh
 ```
 
-They are the same black-box tests the earlier Node API passed, so they also guard compatibility: the web app, existing sessions and the database schema work unchanged.
+They started as the black-box tests the earlier Node API passed and now cover release 1 as well, including Google sign-in against a local mock OpenID provider and the real device companion binary.
 
 ## Endpoints
 

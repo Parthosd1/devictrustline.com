@@ -1,43 +1,61 @@
-# DeviceTrustline — Building & IT Asset Management
+# DeviceTrustline
 
-A multi-tenant web app for tracking laptops, desktops, scanners, monitors and attached workstation equipment across buildings.
+Track what you own and what your organization owns: items with their receipts, photos and warranties, reminders before warranties end or return windows close, and, for businesses, buildings, assignments, maintenance and audits.
+
+Each account can belong to several workspaces. A **personal** workspace is for your own belongings; a **business** workspace adds buildings, employees, audits and reports.
+
+## Languages and layout
+
+| Part | Language | Path |
+|---|---|---|
+| Web app | JavaScript (React 18 + Vite), CSS | `src/`, `style.css` |
+| API and background jobs | Rust (Axum, SQLx, Tokio) | `api/` |
+| Database | PostgreSQL, plain SQL migrations | `api/migrations/` |
+| Device companion for Windows | Rust (reads hardware through PowerShell/CIM) | `agent/` |
+| HTTP tests | JavaScript (Node test runner + supertest) against the real Rust binary | `api/tests/http/` |
+| Deployment | Docker, Docker Compose, Caddy, Render blueprint, Bash | `Dockerfile`, `deploy/`, `render.yaml` |
 
 ## Quick start
 
 ```bash
-docker compose up -d                       # PostgreSQL + API on :4000
+docker compose up -d                       # PostgreSQL, the API on :4000, Mailpit on :8025
 npm install
-npm run dev                                # frontend on :5173, proxies /api to the API
+npm run dev                                # web app on :5173, proxies /api to the API
 ```
 
-Open http://localhost:5173 and choose **Create a workspace**, or load the sample inventory first:
+Open http://localhost:5173 and create an account (emails land in Mailpit at http://localhost:8025), or load the sample business workspace:
 
 ```bash
 docker compose exec -e SEED_ADMIN_EMAIL=you@example.com -e SEED_ADMIN_PASSWORD='a long password' api devicetrustline seed
 ```
 
-To deploy to production (one Docker image, HTTPS, backups), follow [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The API, written in Rust, is documented in [api/README.md](api/README.md).
+Production deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). API: [api/README.md](api/README.md). Device companion: [agent/README.md](agent/README.md). Release status: [PROGRESS.md](PROGRESS.md).
 
 ## Features
 
-- Sign-in, workspace sign-up, and five roles (admin, manager, technician, auditor, viewer)
-- Dashboard with inventory KPIs and type breakdown
-- Searchable, filterable inventory with CSV export
-- Asset registration and editing with an automatic asset tag, plus full change history per asset
-- People, plus assigning and checking in equipment (a workstation's components go with it)
-- Parent-child assets: attach monitors, scanners and docks to a workstation; they move with it
-- QR labels for any asset or a whole filtered list, printable on plain or adhesive paper
-- Scan page: camera scanning (QR and common barcodes), handheld USB/Bluetooth scanners, or typed codes; matches asset tags and manufacturer serials
-- Buildings and locations/stations management
-- Maintenance work orders: priority, assignee, vendor, due date, cost, notes; assets go into and out of Maintenance automatically
-- User management for admins
-- Independent weekly and monthly audits: pick a scope, scan to verify, catch wrong-location and unexpected assets, close to a permanent record; optionally started automatically each week and month
-- Reports: status, type, building, assignment, expiring warranties, maintenance cost, assets still missing after audits, with CSV downloads
-- CSV import with a validated preview, all-or-nothing
-- Settings: scheduled audits and password change
+**Accounts and workspaces**
+- Email and password sign-up (controlled in production), email confirmation, self-service password reset
+- Google sign-in; linking Google to an existing password account requires signing in to that account first
+- Personal and business workspaces, a workspace switcher, invitations by email or copyable link, five roles
 
-## Current limitations
+**Registry**
+- Items with category, condition, owner, price and currency, seller, return deadline, maintenance date, tags and your own custom fields
+- Photos, receipts, manuals and other documents per item, with storage limits per plan
+- Several warranties per item (manufacturer, extended, store, insurance) with states: active, ending soon, expired, unknown
+- Full, append-only change history per item
 
-Email (invitations, self-service password reset, emailed reports) needs an email provider and is not built yet. See [docs/ROADMAP.md](docs/ROADMAP.md).
+**Reminders and insights**
+- Reminders before warranties end, return windows close, maintenance is due, loans are due back and audits are due, in the workspace time zone, in the app and by email when email is set up
+- Dashboard deadlines and suggestions (idle items, warranties ending, frequent repairs, overdue loans), each with its reason; nothing is sold or listed automatically
 
-Domain: devicetrustline.com (GitHub repository is spelled `devictrustline.com`).
+**Business operations**
+- Buildings and locations, people, assigning and checking in equipment, parent and child assets
+- QR labels and scanning (camera, USB/Bluetooth scanners), weekly and monthly audits
+- Maintenance work orders, reports with CSV downloads, CSV import with preview
+
+**Device companion (Windows)**
+- Pairs with a one-time code, reports the computer and attached hardware (monitors, USB devices, printers) for review
+- Only real serial numbers are recorded; devices are never merged on model name alone; nothing is added to the inventory without review
+
+**Plans**
+- Personal Basic, Personal Plus and Business limits (items, members, storage, paired computers), enforced by the API; no payment provider is connected yet
