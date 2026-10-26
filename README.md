@@ -11,6 +11,9 @@ npm run dev
 
 Build for production with `npm run build`.
 
+The backend lives in [`server/`](server/README.md): `docker compose up -d` starts PostgreSQL and the API.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the phased plan.
+
 ## Demo features
 
 - Dashboard with inventory and audit KPIs
@@ -23,10 +26,10 @@ Build for production with `npm run build`.
 
 ## Important limitations
 
-This is a **frontend-only prototype** with fictional sample inventory. It does not have a backend, authentication, multi-user synchronization, real barcode scanning, server-side scheduling, or production-grade audit controls. Audit verification is a demo interaction and does not provide an immutable audit trail. Do not use real organizational or employer inventory until access control and secure storage are implemented.
+The React app is still a **frontend-only prototype** with fictional sample inventory until phase 2 connects it to the new API. Until then it stores data in this browser only, has no sign-in or real barcode scanning, and its audit verification is a demo interaction, not an immutable audit trail. Do not enter real organizational or employer inventory into the demo.
 
-## Next phase for Claude Code
+## Roadmap
 
-Add PostgreSQL, server-side organization isolation, authentication, asset relationships, independent weekly/monthly audit runs, scan verification, immutable event history, CSV import, reports and scheduled notifications. Use pull requests for changes.
+Phase 1 adds the API foundation: PostgreSQL, authentication, roles, organization isolation and append-only asset history. Asset relationships, assignments, scanning, independent weekly/monthly audit runs, maintenance, reports and deployment follow in later phases ([docs/ROADMAP.md](docs/ROADMAP.md)). Changes go through pull requests.
 
 Domain: devicetrustline.com (GitHub repository is spelled `devictrustline.com`).
