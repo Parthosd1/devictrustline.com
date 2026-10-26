@@ -5,31 +5,34 @@ A responsive React + Vite demonstration for tracking laptops, desktops, scanners
 ## Quick start
 
 ```bash
+docker compose up -d                       # PostgreSQL + API on :4000
 npm install
-npm run dev
+npm run dev                                # frontend on :5173, proxies /api to the API
 ```
 
-Build for production with `npm run build`.
+Open http://localhost:5173 and choose **Create a workspace**, or load the sample inventory first:
 
-The backend lives in [`server/`](server/README.md): `docker compose up -d` starts PostgreSQL and the API.
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the phased plan.
+```bash
+cd server && npm install
+DATABASE_URL=postgres://devicetrustline:devicetrustline@localhost:5432/devicetrustline \
+  SEED_ADMIN_EMAIL=you@example.com SEED_ADMIN_PASSWORD='a long password' npm run seed
+```
 
-## Demo features
+Build the frontend for production with `npm run build`. The API is documented in [server/README.md](server/README.md).
 
-- Dashboard with inventory and audit KPIs
-- Searchable asset inventory and new asset registration
-- Building overview and attached equipment counts
-- Weekly and monthly audit screens with manual verification
-- Maintenance issue tracking
-- CSV asset export
-- Browser-local persistence using `localStorage`
+## Features
 
-## Important limitations
+- Sign-in, workspace sign-up, and five roles (admin, manager, technician, auditor, viewer)
+- Dashboard with inventory KPIs and type breakdown
+- Searchable, filterable inventory with CSV export
+- Asset registration and editing with an automatic asset tag, plus full change history per asset
+- Buildings and locations/stations management
+- Maintenance queue
+- User management for admins
+- Weekly and monthly verification checklists (kept in the browser until recorded audit runs ship)
 
-The React app is still a **frontend-only prototype** with fictional sample inventory until phase 2 connects it to the new API. Until then it stores data in this browser only, has no sign-in or real barcode scanning, and its audit verification is a demo interaction, not an immutable audit trail. Do not enter real organizational or employer inventory into the demo.
+## Current limitations
 
-## Roadmap
-
-Phase 1 adds the API foundation: PostgreSQL, authentication, roles, organization isolation and append-only asset history. Asset relationships, assignments, scanning, independent weekly/monthly audit runs, maintenance, reports and deployment follow in later phases ([docs/ROADMAP.md](docs/ROADMAP.md)). Changes go through pull requests.
+Weekly and monthly audit checklists are still stored in the browser and are not a formal audit record. Barcode/QR scanning, assignments, parent-child assets, maintenance work orders, reporting and production hosting are coming in later phases. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Domain: devicetrustline.com (GitHub repository is spelled `devictrustline.com`).
