@@ -12,6 +12,7 @@ const open = (onSelect, id) => onSelect({ id, name: '', assetTag: '', type: '', 
 function when(days) {
   if (days === 0) return 'Today';
   if (days === 1) return 'Tomorrow';
+  if (days === -1) return 'Yesterday';
   return days < 0 ? `${-days} days ago` : `In ${days} days`;
 }
 
