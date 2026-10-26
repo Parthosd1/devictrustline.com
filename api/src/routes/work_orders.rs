@@ -53,7 +53,7 @@ async fn find_work_order(db: &mut Db, org_id: Uuid, id: Uuid, lock: bool) -> Res
 
 async fn check_assignee(db: &mut Db, org_id: Uuid, assignee: Option<Uuid>) -> Result<()> {
     let Some(assignee) = assignee else { return Ok(()) };
-    let u = Q::new("SELECT role, is_active FROM users WHERE org_id = $1 AND id = $2")
+    let u = Q::new("SELECT role, is_active FROM memberships WHERE org_id = $1 AND user_id = $2")
         .bind(org_id)
         .bind(assignee)
         .opt(db)
@@ -158,7 +158,8 @@ pub async fn assignees(State(state): State<AppState>, user: User) -> Result<Json
     user.require("maintenance:read")?;
     let mut db = state.pool.acquire().await?;
     let items = Q::new(
-        "SELECT id, name, role FROM users WHERE org_id = $1 AND is_active AND role IN ('admin', 'manager', 'technician') ORDER BY name",
+        "SELECT u.id, u.name, m.role FROM memberships m JOIN users u ON u.id = m.user_id
+          WHERE m.org_id = $1 AND m.is_active AND u.is_active AND m.role IN ('admin', 'manager', 'technician') ORDER BY u.name",
     )
     .bind(user.org_id)
     .all(&mut db)

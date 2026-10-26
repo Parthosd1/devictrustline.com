@@ -18,6 +18,39 @@ pub struct Config {
     pub static_dir: Option<String>,
     pub log_requests: bool,
     pub auth_rate_limit: u32,
+    /// Public base URL used in emailed links and sign-in callbacks, e.g. https://devicetrustline.com.
+    pub app_url: String,
+    pub mail: MailConfig,
+    pub google: Option<GoogleConfig>,
+    /// Private directory for uploaded photos, receipts and documents.
+    pub attachments_dir: String,
+    pub max_upload_bytes: usize,
+    /// New accounts must confirm their email before signing in (only when email delivery is configured).
+    pub require_email_verification: bool,
+}
+
+#[derive(Clone, Debug)]
+pub enum MailConfig {
+    /// No email provider: nothing is sent and the app says so.
+    Disabled,
+    /// Local testing: messages are accepted into a mailbox readable at /api/dev/mailbox. Never in production.
+    Capture { from: String },
+    /// Any SMTP provider (Postmark, SendGrid, SES, Mailgun, Mailpit for local testing...).
+    Smtp { url: String, from: String },
+}
+
+impl MailConfig {
+    pub fn available(&self) -> bool {
+        !matches!(self, MailConfig::Disabled)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GoogleConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    /// Only overridden by the test suite's stand-in identity provider.
+    pub issuer: String,
 }
 
 fn var(name: &str) -> Option<String> {
@@ -43,6 +76,30 @@ impl Config {
         let number = |name: &str, default: u64| -> Result<u64, String> {
             var(name).map(|v| v.parse().map_err(|_| format!("{name} must be a number"))).unwrap_or(Ok(default))
         };
+        let app_origins: Vec<String> = var("APP_ORIGIN")
+            .unwrap_or_else(|| "http://localhost:5173".into())
+            .split(',')
+            .map(|o| o.trim().to_string())
+            .filter(|o| !o.is_empty())
+            .collect();
+        let app_url = var("APP_URL").unwrap_or_else(|| app_origins[0].clone()).trim_end_matches('/').to_string();
+        let from = var("MAIL_FROM").unwrap_or_else(|| "DeviceTrustline <no-reply@devicetrustline.com>".into());
+        let mail = match (var("MAIL_MODE").as_deref(), var("SMTP_URL")) {
+            (Some("capture"), _) if is_production => return Err("MAIL_MODE=capture is for local testing only".into()),
+            (Some("capture"), _) => MailConfig::Capture { from },
+            (Some("disabled"), _) | (None, None) => MailConfig::Disabled,
+            (_, Some(url)) => MailConfig::Smtp { url, from },
+            (Some(other), None) => return Err(format!("MAIL_MODE={other} needs SMTP_URL")),
+        };
+        let google = match (var("GOOGLE_CLIENT_ID"), var("GOOGLE_CLIENT_SECRET")) {
+            (Some(client_id), Some(client_secret)) => Some(GoogleConfig {
+                client_id,
+                client_secret,
+                issuer: var("GOOGLE_ISSUER").unwrap_or_else(|| "https://accounts.google.com".into()),
+            }),
+            (None, None) => None,
+            _ => return Err("Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither".into()),
+        };
         Ok(Config {
             is_production,
             port: number("PORT", 4000)? as u16,
@@ -51,17 +108,18 @@ impl Config {
             database_pool_size: number("DATABASE_POOL_SIZE", 10)? as u32,
             jwt_secret,
             session_hours: number("SESSION_HOURS", 8)? as i64,
-            app_origins: var("APP_ORIGIN")
-                .unwrap_or_else(|| "http://localhost:5173".into())
-                .split(',')
-                .map(|o| o.trim().to_string())
-                .filter(|o| !o.is_empty())
-                .collect(),
+            app_origins,
             allow_signup: flag("ALLOW_SIGNUP", !is_production),
             trust_proxy: flag("TRUST_PROXY", false),
             static_dir: var("STATIC_DIR"),
             log_requests: flag("LOG_REQUESTS", is_production),
             auth_rate_limit: number("AUTH_RATE_LIMIT", 20)? as u32,
+            require_email_verification: flag("REQUIRE_EMAIL_VERIFICATION", matches!(mail, MailConfig::Smtp { .. })),
+            app_url,
+            mail,
+            google,
+            attachments_dir: var("ATTACHMENTS_DIR").unwrap_or_else(|| "./data/attachments".into()),
+            max_upload_bytes: number("MAX_UPLOAD_MB", 10)? as usize * 1024 * 1024,
         })
     }
 }

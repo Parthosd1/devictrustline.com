@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::db::{uuid_of, Q};
 use crate::error::Result;
 use crate::routes::audits::{start_audit, NewAudit};
@@ -48,7 +49,7 @@ pub async fn run_scheduled_audits(pool: &PgPool, log: bool) -> Result<Vec<Value>
             }
             // Scheduled audits are attributed to the organization's longest-standing active admin.
             let admin: Option<Uuid> = Q::new(
-                "SELECT id FROM users WHERE org_id = $1 AND role = 'admin' AND is_active ORDER BY created_at LIMIT 1",
+                "SELECT user_id FROM memberships WHERE org_id = $1 AND role = 'admin' AND is_active ORDER BY created_at LIMIT 1",
             )
             .bind(org_id)
             .scalars(&mut tx)
@@ -77,7 +78,24 @@ pub async fn run_scheduled_audits(pool: &PgPool, log: bool) -> Result<Vec<Value>
     Ok(started)
 }
 
-pub fn start(pool: PgPool) {
+/// Background jobs that run every few seconds on every server: email delivery (and, later,
+/// reminders). Each job claims its rows with SKIP LOCKED, so instances never duplicate work.
+pub async fn run_jobs(pool: &PgPool, config: &Config) -> Result<Value> {
+    let emails = crate::mail::deliver_due(pool, &config.mail).await?;
+    Ok(json!({ "emailsSent": emails }))
+}
+
+pub fn start(pool: PgPool, config: Config) {
+    let jobs_pool = pool.clone();
+    tokio::spawn(async move {
+        let mut every = tokio::time::interval(Duration::from_secs(10));
+        loop {
+            every.tick().await;
+            if let Err(e) = run_jobs(&jobs_pool, &config).await {
+                eprintln!("background jobs failed: {e:?}");
+            }
+        }
+    });
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(5)).await;
         let mut every = tokio::time::interval(Duration::from_secs(15 * 60));

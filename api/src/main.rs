@@ -8,8 +8,10 @@ mod auth;
 mod config;
 mod db;
 mod error;
+mod mail;
 mod routes;
 mod scheduler;
+mod tokens;
 mod validate;
 mod web;
 
@@ -66,8 +68,12 @@ async fn main() {
                 scheduler::run_scheduled_audits(&pool, false).await.unwrap_or_else(|e| fail(format!("{e:?}")));
             println!("{}", serde_json::Value::Array(started));
         }
+        "run-jobs" => {
+            let done = scheduler::run_jobs(&pool, &config).await.unwrap_or_else(|e| fail(format!("{e:?}")));
+            println!("{done}");
+        }
         other => fail(format!(
-            "Unknown command {other}. Use serve, migrate, create-admin, seed, run-scheduled-audits or healthcheck."
+            "Unknown command {other}. Use serve, migrate, create-admin, seed, run-scheduled-audits, run-jobs or healthcheck."
         )),
     }
 }
@@ -75,7 +81,7 @@ async fn main() {
 async fn serve(config: Config, pool: PgPool) {
     db::migrate(&pool, true).await.unwrap_or_else(|e| fail(format!("{e:?}")));
     if std::env::var("DISABLE_SCHEDULER").as_deref() != Ok("true") {
-        scheduler::start(pool.clone());
+        scheduler::start(pool.clone(), config.clone());
     }
     let port = config.port;
     let state = AppState {
@@ -134,15 +140,16 @@ async fn create_admin(pool: &PgPool) {
     let hash = auth::hash_password(password).await.unwrap_or_else(|e| fail(format!("{e:?}")));
     let result = async {
         let mut tx = pool.begin().await?;
-        let org_id: uuid::Uuid =
-            Q::new("INSERT INTO organizations (name) VALUES ($1) RETURNING id").bind(&org).scalar(&mut tx).await?;
-        Q::new("INSERT INTO users (org_id, email, name, password_hash, role) VALUES ($1, $2::citext, $3, $4, 'admin')")
-            .bind(org_id)
-            .bind(&email)
-            .bind(&name)
-            .bind(hash)
-            .run(&mut tx)
-            .await?;
+        // The administrator set up from the server is trusted with their own address.
+        let user_id: uuid::Uuid = Q::new(
+            "INSERT INTO users (email, name, password_hash, email_verified_at) VALUES ($1::citext, $2, $3, now()) RETURNING id",
+        )
+        .bind(&email)
+        .bind(&name)
+        .bind(hash)
+        .scalar(&mut tx)
+        .await?;
+        routes::auth::create_workspace(&mut tx, user_id, &org, "business").await?;
         tx.commit().await?;
         Ok::<_, error::AppError>(())
     }
@@ -176,16 +183,14 @@ async fn seed(pool: &PgPool) {
     let hash = auth::hash_password(password).await.unwrap_or_else(|e| fail(format!("{e:?}")));
     let result = async {
         let mut tx = pool.begin().await?;
-        let org: uuid::Uuid =
-            Q::new("INSERT INTO organizations (name) VALUES ('Demo Workspace') RETURNING id").scalar(&mut tx).await?;
         let admin: uuid::Uuid = Q::new(
-            "INSERT INTO users (org_id, email, name, password_hash, role) VALUES ($1, $2::citext, 'Demo Admin', $3, 'admin') RETURNING id",
+            "INSERT INTO users (email, name, password_hash, email_verified_at) VALUES ($1::citext, 'Demo Admin', $2, now()) RETURNING id",
         )
-        .bind(org)
         .bind(&email)
         .bind(hash)
         .scalar(&mut tx)
         .await?;
+        let org = routes::auth::create_workspace(&mut tx, admin, "Demo Workspace", "business").await?;
         let mut buildings = std::collections::HashMap::new();
         let mut locations = std::collections::HashMap::new();
         for [name, kind, serial, building, location, status] in SAMPLE {

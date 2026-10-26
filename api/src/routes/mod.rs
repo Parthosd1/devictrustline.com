@@ -2,6 +2,7 @@ pub mod assets;
 pub mod audits;
 pub mod auth;
 pub mod import;
+pub mod invitations;
 pub mod people;
 pub mod reports;
 pub mod settings;
@@ -32,12 +33,25 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/auth/signup", post(auth::signup))
         .route("/api/auth/login", post(auth::login))
         .route("/api/auth/change-password", post(auth::change_password))
+        .route("/api/auth/verify-email", post(auth::verify_email))
+        .route("/api/auth/resend-verification", post(auth::resend_verification))
+        .route("/api/auth/password-reset/request", post(auth::request_password_reset))
+        .route("/api/auth/password-reset/confirm", post(auth::reset_password))
+        .route("/api/invitations/accept", post(invitations::accept))
         .route_layer(from_fn_with_state(state.clone(), web::rate_limit));
 
     Router::new()
         .route("/api/health", get(health))
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/auth/me", get(auth::me))
+        .route("/api/auth/config", get(auth::config))
+        .route("/api/auth/switch", post(auth::switch))
+        .route("/api/account", get(auth::account).patch(auth::update_account))
+        .route("/api/workspaces", get(auth::workspaces).post(auth::create_workspace_route))
+        .route("/api/invitations", get(invitations::list).post(invitations::create))
+        .route("/api/invitations/lookup", get(invitations::lookup))
+        .route("/api/invitations/{id}", axum::routing::delete(invitations::revoke))
+        .route("/api/dev/mailbox", get(invitations::dev_mailbox))
         .merge(limited)
         .route("/api/users", get(users::list).post(users::create))
         .route("/api/users/{id}", patch(users::update))
