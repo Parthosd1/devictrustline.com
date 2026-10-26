@@ -6,10 +6,12 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs && cargo build --release --lo
 COPY migrations ./migrations
 COPY src ./src
 RUN touch src/main.rs && cargo build --release --locked
+RUN mkdir -p /data/attachments
 
 FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --from=build /api/target/release/devicetrustline /usr/local/bin/devicetrustline
-ENV APP_ENV=production PORT=4000
+COPY --from=build --chown=65532:65532 /data /data
+ENV APP_ENV=production PORT=4000 ATTACHMENTS_DIR=/data/attachments
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s CMD ["devicetrustline", "healthcheck"]
 ENTRYPOINT ["devicetrustline"]

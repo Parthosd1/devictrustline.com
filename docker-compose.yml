@@ -24,11 +24,23 @@ services:
       JWT_SECRET: ${JWT_SECRET:-local-development-secret-not-for-production-use}
       APP_ORIGIN: http://localhost:5173
       ALLOW_SIGNUP: "true"
+      APP_URL: http://localhost:5173
+      SMTP_URL: smtp://mailpit:1025
+      ATTACHMENTS_DIR: /data/attachments
+    volumes:
+      - attachments:/data
     ports:
       - "4000:4000"
     depends_on:
       db:
         condition: service_healthy
 
+  # Catches every email the app sends; read them at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "8025:8025"
+
 volumes:
+  attachments:
   pgdata:

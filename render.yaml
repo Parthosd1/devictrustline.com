@@ -1,5 +1,5 @@
 # Render Blueprint: one web service (app + API) and a managed PostgreSQL database.
-# In Render: New > Blueprint > pick this repository. Then set APP_ORIGIN to your URL.
+# In Render: New > Blueprint > pick this repository. Then set APP_ORIGIN and APP_URL to your URL.
 services:
   - type: web
     name: devicetrustline
@@ -18,8 +18,21 @@ services:
         value: "true"
       - key: APP_ORIGIN
         sync: false
+      - key: APP_URL
+        sync: false
       - key: ALLOW_SIGNUP
         value: "false"
+      - key: SMTP_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+    # Uploaded photos and documents. A disk pins the service to one instance.
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 5
 
 databases:
   - name: devicetrustline-db

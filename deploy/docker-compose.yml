@@ -26,8 +26,19 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/.env}
       APP_ORIGIN: https://${DOMAIN}
       TRUST_PROXY: "true"
+      APP_URL: https://${DOMAIN}
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
       SESSION_HOURS: ${SESSION_HOURS:-8}
+      # Email: without SMTP_URL nothing is sent and the app shows invite links to copy instead.
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-DeviceTrustline <no-reply@devicetrustline.com>}
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-}
+      # Google sign-in: leave both empty to hide the button.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
+    volumes:
+      - attachments:/data
     depends_on:
       db:
         condition: service_healthy
@@ -46,7 +57,8 @@ services:
       interval: 5s
       retries: 10
 
-  # Nightly compressed pg_dump into ./backups, keeping the last BACKUP_KEEP_DAYS days.
+  # Nightly compressed pg_dump plus a copy of uploaded files into ./backups,
+  # keeping the last BACKUP_KEEP_DAYS days. Restore steps: docs/DEPLOYMENT.md.
   backup:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -58,13 +70,16 @@ services:
       KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
     volumes:
       - ./backups:/backups
+      - attachments:/data:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         while true; do
           f=/backups/devicetrustline-$$(date -u +%Y%m%d-%H%M%S).sql.gz
           if pg_dump --no-owner | gzip > "$$f.tmp"; then mv "$$f.tmp" "$$f"; echo "backup written $$f"; else rm -f "$$f.tmp"; echo "backup FAILED"; fi
-          find /backups -name 'devicetrustline-*.sql.gz' -mtime +$$KEEP_DAYS -delete
+          a=/backups/files-$$(date -u +%Y%m%d-%H%M%S).tar.gz
+          if tar -czf "$$a.tmp" -C /data .; then mv "$$a.tmp" "$$a"; echo "files written $$a"; else rm -f "$$a.tmp"; echo "files backup FAILED"; fi
+          find /backups \( -name 'devicetrustline-*.sql.gz' -o -name 'files-*.tar.gz' \) -mtime +$$KEEP_DAYS -delete
           sleep 86400
         done
     depends_on:
@@ -72,6 +87,7 @@ services:
         condition: service_healthy
 
 volumes:
+  attachments:
   pgdata:
   caddy_data:
   caddy_config:

@@ -10,3 +10,4 @@ api/tests
 docs
 deploy
 *.md
+agent/target

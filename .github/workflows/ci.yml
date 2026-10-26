@@ -52,6 +52,42 @@ jobs:
       - run: cargo test --locked
       - run: ./scripts/test-http.sh
 
+  # Fresh install, upgrade from the previous release's schema with data, and backup/restore.
+  deploy:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PG_ADMIN_URL: postgres://postgres:postgres@localhost:5432
+      PGPASSWORD: postgres
+      # The last release before workspaces (schema 005), used as the upgrade starting point.
+      BASELINE: 279c9e7e9b7c79c00b92e868f5df409845cf1088
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            api
+            baseline/api
+      - run: git worktree add baseline "$BASELINE"
+      - run: cargo build --release --locked
+        working-directory: baseline/api
+      - run: cargo build --release --locked
+        working-directory: api
+      - run: OLD_BIN="$GITHUB_WORKSPACE/baseline/api/target/release/devicetrustline" ./scripts/test-deploy.sh
+        working-directory: api
+
   agent:
     runs-on: ubuntu-latest
     defaults:
