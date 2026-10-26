@@ -4,7 +4,12 @@ import { config } from '../config.js';
 // Return DATE columns as 'YYYY-MM-DD' strings instead of timezone-shifted Date objects.
 pg.types.setTypeParser(1082, (value) => value);
 
-export const pool = new pg.Pool({ connectionString: config.databaseUrl });
+// DATABASE_SSL=true for managed databases that require TLS; 'no-verify' when the provider's certificate
+// is not publicly trusted (some hosted Postgres plans). Leave unset on a private network.
+const ssl = { true: { rejectUnauthorized: true }, 'no-verify': { rejectUnauthorized: false } }[config.databaseSsl];
+
+export const pool = new pg.Pool({ connectionString: config.databaseUrl, ssl, max: config.databasePoolSize });
+pool.on('error', (err) => console.error('idle database connection error', err.message));
 
 export const query = (text, params) => pool.query(text, params);
 

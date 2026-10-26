@@ -11,6 +11,7 @@
     "dev": "node --watch src/index.js",
     "migrate": "node src/db/migrate.js",
     "seed": "node src/db/seed.js",
+    "create-admin": "node src/db/createAdmin.js",
     "test": "node --test --test-concurrency=1 test/*.test.js"
   },
   "dependencies": {

@@ -1,3 +1,4 @@
+import path from 'node:path';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
@@ -16,12 +17,35 @@ import { sitesRouter } from './routes/sites.js';
 import { usersRouter } from './routes/users.js';
 import { workOrdersRouter } from './routes/workOrders.js';
 
-export function createApp() {
+export function createApp({ staticDir = config.staticDir } = {}) {
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
 
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        mediaSrc: ["'self'", 'blob:'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        upgradeInsecureRequests: config.isProduction ? [] : null,
+      },
+    },
+  }));
+  // The scan pages use the camera; nothing else needs device access.
+  app.use((_req, res, next) => {
+    res.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+    next();
+  });
+  if (config.logRequests) app.use(requestLog);
   app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());
   app.use('/api', checkOrigin(config.appOrigins));
@@ -47,6 +71,31 @@ export function createApp() {
   app.use('/api', authenticate, sitesRouter);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
+  if (staticDir) serveWebApp(app, staticDir);
   app.use(errorHandler);
   return app;
+}
+
+// Serves the built web app. Hashed files under /assets are cached for a year;
+// every other path falls back to index.html, which is never cached.
+function serveWebApp(app, dir) {
+  const root = path.resolve(dir);
+  app.use('/assets', express.static(path.join(root, 'assets'), { immutable: true, maxAge: '1y', fallthrough: false }));
+  app.use(express.static(root, { index: false, maxAge: '1h' }));
+  app.get('*', (_req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(path.join(root, 'index.html'));
+  });
+}
+
+function requestLog(req, res, next) {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    if (req.originalUrl === '/api/health') return;
+    console.log(JSON.stringify({
+      t: new Date().toISOString(), method: req.method, path: req.originalUrl.split('?')[0], status: res.statusCode,
+      ms: Number((process.hrtime.bigint() - start) / 1000000n), user: req.user?.id,
+    }));
+  });
+  next();
 }

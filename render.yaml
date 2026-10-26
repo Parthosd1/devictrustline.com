@@ -1,0 +1,27 @@
+# Render Blueprint: one web service (app + API) and a managed PostgreSQL database.
+# In Render: New > Blueprint > pick this repository. Then set APP_ORIGIN to your URL.
+services:
+  - type: web
+    name: devicetrustline
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: devicetrustline-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: TRUST_PROXY
+        value: "true"
+      - key: APP_ORIGIN
+        sync: false
+      - key: ALLOW_SIGNUP
+        value: "false"
+
+databases:
+  - name: devicetrustline-db
+    plan: basic-256mb
+    postgresVersion: "16"
