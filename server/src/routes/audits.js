@@ -31,7 +31,7 @@ const RUN_SELECT = `
   SELECT r.id, r.period, r.name, r.status, r.building_id AS "buildingId", b.name AS "buildingName",
          r.location_id AS "locationId", l.name AS "locationName", r.due_at AS "dueAt",
          r.started_at AS "startedAt", su.name AS "startedBy", r.closed_at AS "closedAt", cu.name AS "closedBy",
-         r.summary,
+         r.summary, r.scheduled,
          (SELECT json_build_object(
             'expected', count(*) FILTER (WHERE i.expected),
             'verified', count(*) FILTER (WHERE i.result = 'verified' AND i.expected),
@@ -95,46 +95,52 @@ auditsRouter.get('/', requirePermission('audits:read'), route(async (req, res) =
   res.json({ items: rows });
 }));
 
+// Opens an audit and snapshots every active asset in scope. Used by people and by the scheduler.
+export async function startAudit(db, { orgId, userId, period, buildingId = null, locationId = null, name = null, dueAt = null, scheduled = false }) {
+  if (locationId && !buildingId) throw new HttpError(400, 'Choose the building for that location');
+  let scopeName = null;
+  if (buildingId) {
+    const { rows: [scope] } = await db.query(
+      `SELECT b.name AS building, l.name AS location FROM buildings b
+         LEFT JOIN locations l ON l.id = $3 AND l.building_id = b.id
+        WHERE b.org_id = $1 AND b.id = $2`,
+      [orgId, buildingId, locationId],
+    );
+    if (!scope || (locationId && !scope.location)) throw new HttpError(400, 'Building or location not found');
+    scopeName = scope.location ? `${scope.building} / ${scope.location}` : scope.building;
+  }
+  const { rows: [{ id }] } = await db.query(
+    `INSERT INTO audit_runs (org_id, period, name, building_id, location_id, due_at, started_by, scheduled)
+     VALUES ($1, $2, $3, $4, $5,
+             COALESCE($6::timestamptz, CASE WHEN $2 = 'weekly' THEN now() + interval '7 days'
+                                            ELSE date_trunc('month', now()) + interval '1 month' END),
+             $7, $8)
+     RETURNING id`,
+    [orgId, period, name ?? defaultName(period, scopeName), buildingId, locationId, dueAt, userId, scheduled],
+  ).catch((err) => {
+    if (err.constraint === 'audit_runs_one_open') {
+      throw new HttpError(409, `A ${period} audit is already open for this scope. Close it before starting another.`);
+    }
+    throw err;
+  });
+  await db.query(
+    `INSERT INTO audit_items (run_id, org_id, asset_id, expected_building_id, expected_location_id)
+     SELECT $1, org_id, id, building_id, location_id FROM assets
+      WHERE org_id = $2 AND status <> 'Retired'
+        AND ($3::uuid IS NULL OR building_id = $3) AND ($4::uuid IS NULL OR location_id = $4)`,
+    [id, orgId, buildingId, locationId],
+  );
+  return id;
+}
+
 auditsRouter.post('/', requirePermission('audits:perform'), route(async (req, res) => {
   const body = startSchema.parse(req.body);
-  if (body.locationId && !body.buildingId) throw new HttpError(400, 'Choose the building for that location');
-  const orgId = req.user.org_id;
   const run = await withTransaction(async (db) => {
-    let scopeName = null;
-    if (body.buildingId) {
-      const { rows: [scope] } = await db.query(
-        `SELECT b.name AS building, l.name AS location FROM buildings b
-           LEFT JOIN locations l ON l.id = $3 AND l.building_id = b.id
-          WHERE b.org_id = $1 AND b.id = $2`,
-        [orgId, body.buildingId, body.locationId ?? null],
-      );
-      if (!scope || (body.locationId && !scope.location)) throw new HttpError(400, 'Building or location not found');
-      scopeName = scope.location ? `${scope.building} / ${scope.location}` : scope.building;
-    }
-    const { rows: [{ id }] } = await db.query(
-      `INSERT INTO audit_runs (org_id, period, name, building_id, location_id, due_at, started_by)
-       VALUES ($1, $2, $3, $4, $5,
-               COALESCE($6::timestamptz, CASE WHEN $2 = 'weekly' THEN now() + interval '7 days'
-                                              ELSE date_trunc('month', now()) + interval '1 month' END),
-               $7)
-       RETURNING id`,
-      [orgId, body.period, body.name ?? defaultName(body.period, scopeName), body.buildingId ?? null,
-        body.locationId ?? null, body.dueAt ?? null, req.user.id],
-    ).catch((err) => {
-      if (err.constraint === 'audit_runs_one_open') {
-        throw new HttpError(409, `A ${body.period} audit is already open for this scope. Close it before starting another.`);
-      }
-      throw err;
+    const id = await startAudit(db, {
+      orgId: req.user.org_id, userId: req.user.id, period: body.period, buildingId: body.buildingId ?? null,
+      locationId: body.locationId ?? null, name: body.name ?? null, dueAt: body.dueAt ?? null,
     });
-    // Snapshot every active asset in scope, with where it is expected to be.
-    await db.query(
-      `INSERT INTO audit_items (run_id, org_id, asset_id, expected_building_id, expected_location_id)
-       SELECT $1, org_id, id, building_id, location_id FROM assets
-        WHERE org_id = $2 AND status <> 'Retired'
-          AND ($3::uuid IS NULL OR building_id = $3) AND ($4::uuid IS NULL OR location_id = $4)`,
-      [id, orgId, body.buildingId ?? null, body.locationId ?? null],
-    );
-    return findRun(db, orgId, id);
+    return findRun(db, req.user.org_id, id);
   });
   res.status(201).json(run);
 }));

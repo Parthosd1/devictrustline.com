@@ -8,7 +8,10 @@ import { errorHandler } from './middleware/errors.js';
 import { assetsRouter } from './routes/assets.js';
 import { auditsRouter } from './routes/audits.js';
 import { authRouter } from './routes/auth.js';
+import { importRouter } from './routes/importAssets.js';
 import { peopleRouter } from './routes/people.js';
+import { reportsRouter } from './routes/reports.js';
+import { settingsRouter } from './routes/settings.js';
 import { sitesRouter } from './routes/sites.js';
 import { usersRouter } from './routes/users.js';
 import { workOrdersRouter } from './routes/workOrders.js';
@@ -19,7 +22,7 @@ export function createApp() {
   if (config.trustProxy) app.set('trust proxy', 1);
 
   app.use(helmet());
-  app.use(express.json({ limit: '100kb' }));
+  app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());
   app.use('/api', checkOrigin(config.appOrigins));
 
@@ -34,10 +37,13 @@ export function createApp() {
 
   app.use('/api/auth', authRouter);
   app.use('/api/users', authenticate, usersRouter);
+  app.use('/api/assets/import', authenticate, importRouter);
   app.use('/api/assets', authenticate, assetsRouter);
   app.use('/api/people', authenticate, peopleRouter);
   app.use('/api/audits', authenticate, auditsRouter);
   app.use('/api/work-orders', authenticate, workOrdersRouter);
+  app.use('/api/reports', authenticate, reportsRouter);
+  app.use('/api/settings', authenticate, settingsRouter);
   app.use('/api', authenticate, sitesRouter);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
