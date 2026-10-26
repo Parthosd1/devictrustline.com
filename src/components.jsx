@@ -1,5 +1,7 @@
 import React, { cloneElement, useEffect, useId } from 'react';
 import { AlertTriangle, Laptop, Monitor, Package, Printer, ScanLine, Smartphone, X } from 'lucide-react';
+import { useAuth } from './auth.jsx';
+import { nouns } from './catalog.jsx';
 import { downloadRows } from './csv.js';
 
 const TYPE_ICONS = {
@@ -52,15 +54,18 @@ export function Field({ label, children, wide }) {
 }
 
 export function AssetTable({ assets, onSelect, loading }) {
+  const { user } = useAuth();
+  const personal = user?.organization.kind === 'personal';
+  const n = nouns(personal ? 'personal' : 'business');
   return (
     <div className="table-scroll">
       <table>
         <thead>
-          <tr><th>ASSET</th><th>TYPE</th><th>SERIAL NUMBER</th><th>LOCATION</th><th>ASSIGNED TO</th><th>STATUS</th></tr>
+          <tr><th>{n.one.toUpperCase()}</th><th>CATEGORY</th><th>SERIAL NUMBER</th><th>{n.place.toUpperCase()}</th><th>{personal ? 'WITH' : 'ASSIGNED TO'}</th><th>STATUS</th></tr>
         </thead>
         <tbody>
           {assets.length === 0 ? (
-            <tr><td colSpan="6" className="empty">{loading ? 'Loading…' : 'No assets found'}</td></tr>
+            <tr><td colSpan="6" className="empty">{loading ? 'Loading…' : `No ${n.many} found`}</td></tr>
           ) : assets.map((a) => (
             <tr key={a.id} className={onSelect ? 'clickable' : undefined} onClick={onSelect && (() => onSelect(a))}
               tabIndex={onSelect ? 0 : undefined} onKeyDown={onSelect && ((e) => e.key === 'Enter' && onSelect(a))}>
@@ -72,7 +77,7 @@ export function AssetTable({ assets, onSelect, loading }) {
               </td>
               <td>{a.type}</td>
               <td className="mono">{a.serial || '—'}</td>
-              <td><strong className="normal">{a.buildingName || 'No building'}</strong><small>{a.locationName || 'Unassigned'}</small></td>
+              <td><strong className="normal">{a.buildingName || '—'}</strong>{a.locationName && <small>{a.locationName}</small>}</td>
               <td>{a.assignedPersonName || <span className="muted">—</span>}</td>
               <td><StatusBadge status={a.status} /></td>
             </tr>

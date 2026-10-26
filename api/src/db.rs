@@ -96,6 +96,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("003_audits.sql", include_str!("../migrations/003_audits.sql")),
     ("004_maintenance.sql", include_str!("../migrations/004_maintenance.sql")),
     ("005_settings_scheduling.sql", include_str!("../migrations/005_settings_scheduling.sql")),
+    ("006_workspaces_accounts.sql", include_str!("../migrations/006_workspaces_accounts.sql")),
+    ("007_item_registry.sql", include_str!("../migrations/007_item_registry.sql")),
+    ("008_plans_warranties_reminders.sql", include_str!("../migrations/008_plans_warranties_reminders.sql")),
+    ("009_device_agents.sql", include_str!("../migrations/009_device_agents.sql")),
 ];
 
 /// Applies every migration not yet recorded in schema_migrations, in order, each in its own
@@ -131,22 +135,6 @@ async fn apply_migrations(conn: &mut Db, log: bool) -> Result<()> {
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn every_migration_file_is_embedded_in_order() {
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
-        let mut files: Vec<String> = std::fs::read_dir(dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().into_string().unwrap())
-            .filter(|f| f.ends_with(".sql"))
-            .collect();
-        files.sort();
-        let embedded: Vec<&str> = super::MIGRATIONS.iter().map(|(n, _)| *n).collect();
-        assert_eq!(files, embedded);
-    }
 }
 
 /// A parameter whose type is only known at run time.
@@ -197,5 +185,21 @@ impl Assign {
             q = q.bind_param(p);
         }
         q
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_migration_file_is_embedded_in_order() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
+        let mut files: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|f| f.ends_with(".sql"))
+            .collect();
+        files.sort();
+        let embedded: Vec<&str> = super::MIGRATIONS.iter().map(|(n, _)| *n).collect();
+        assert_eq!(files, embedded);
     }
 }

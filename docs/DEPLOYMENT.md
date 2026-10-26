@@ -1,6 +1,6 @@
 # Deploying DeviceTrustline
 
-The production build is one Docker image (the root `Dockerfile`). It builds the web app and the Rust API into a small image with a single binary, which serves the app and the `/api` routes from the same origin. The only other thing it needs is PostgreSQL 14 or newer.
+The production build is one Docker image (the root `Dockerfile`). It builds the React web app, the Rust API and the Rust Windows device companion. The API binary serves the app, the `/api` routes and the companion download (`/downloads/devicetrustline-agent.exe`) from the same origin, and runs background jobs (reminders, email delivery, scheduled audits) in the same process. It needs PostgreSQL 14 or newer and a persistent directory for uploaded files (`/data` in the image).
 
 Pick one of the two options below.
 
@@ -27,20 +27,23 @@ Use any Linux VM with Docker (for example 2 vCPU and 2 GB RAM on DigitalOcean, H
 
 To update, run `git pull`, then run the same `docker compose … up -d --build` command. Database migrations run automatically on start.
 
-**Backups.** The `backup` service writes a compressed `pg_dump` to `deploy/backups/` every night and keeps 14 days (`BACKUP_KEEP_DAYS`). Copy that folder off the server, for example with a nightly `rclone` or `aws s3 sync` cron job. A backup on the same disk does not protect against losing the server. To restore:
+**Backups.** The `backup` service writes a compressed `pg_dump` (`devicetrustline-*.sql.gz`) and a tar of uploaded photos and documents (`files-*.tar.gz`) to `deploy/backups/` every night, and keeps 14 days (`BACKUP_KEEP_DAYS`). Copy that folder off the server, for example with a nightly `rclone` or `aws s3 sync` cron job. A backup on the same disk does not protect against losing the server. To restore, into an empty database (stop the stack, remove the `pgdata` volume, start `db` alone):
 ```sh
-gunzip -c deploy/backups/devicetrustline-YYYYMMDD-HHMMSS.sql.gz | \
-  docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec -T db psql -U devicetrustline devicetrustline
+C="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
+gunzip -c deploy/backups/devicetrustline-YYYYMMDD-HHMMSS.sql.gz | $C exec -T db psql -U devicetrustline devicetrustline
+$C run --rm -v "$PWD/deploy/backups:/backups:ro" --entrypoint sh backup -c 'cd /data && tar -xzf /backups/files-YYYYMMDD-HHMMSS.tar.gz'
+$C up -d
 ```
-Restore into an empty database. To get one, stop the stack, remove the `pgdata` volume, then start `db` alone before restoring.
+The backup container mounts the files volume read-only, so for the second command change `attachments:/data:ro` to `attachments:/data` in `deploy/docker-compose.yml` first, and change it back afterwards. `api/scripts/test-deploy.sh` checks this round trip (database plus files) in CI, along with a fresh install and an upgrade from the previous release's schema with data.
 
 ## Option B: Render (managed hosting and managed PostgreSQL)
 
 1. In Render, choose **New → Blueprint** and select this repository. `render.yaml` creates the web service and a PostgreSQL database, and generates `JWT_SECRET`.
 2. Set `APP_ORIGIN` to the service URL, for example `https://devicetrustline.onrender.com`. After you add `devicetrustline.com` as a custom domain under **Settings → Custom Domains**, set it to `https://devicetrustline.com`. To accept both, separate them with commas.
-3. Open the service **Shell** and run step 3 above as `ORG_NAME=… ADMIN_EMAIL=… ADMIN_PASSWORD=… devicetrustline create-admin`.
+3. Set `APP_URL` to the same public URL (links in emails use it), and fill in `SMTP_URL`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` if you use them (see below).
+4. Open the service **Shell** and run step 3 above as `ORG_NAME=… ADMIN_EMAIL=… ADMIN_PASSWORD=… devicetrustline create-admin`.
 
-Render's paid PostgreSQL plans include daily backups and point-in-time recovery. The same image also runs on Fly.io, Railway, Google Cloud Run, Azure Container Apps or AWS App Runner. On any of them, set the environment variables below and attach a managed PostgreSQL database.
+`render.yaml` attaches a 5 GB persistent disk at `/data` for uploaded files. Render disks need a paid instance, keep the service to one instance, and are snapshotted daily by Render. Render's paid PostgreSQL plans include daily backups and point-in-time recovery. The same image also runs on Fly.io, Railway, Google Cloud Run, Azure Container Apps or AWS App Runner. On any of them, set the environment variables below and attach a managed PostgreSQL database.
 
 ## Environment variables
 
@@ -51,9 +54,16 @@ Render's paid PostgreSQL plans include daily backups and point-in-time recovery.
 | `APP_ORIGIN` | yes | The site's public URL, such as `https://devicetrustline.com`. Comma-separate multiple URLs. Browser requests from other origins are refused. |
 | `TRUST_PROXY` | behind a proxy | `true` behind Caddy, a load balancer or a PaaS, so rate limits and secure cookies see the real client. |
 | `DATABASE_SSL` | managed DBs | `true` to require TLS with a verified certificate. Use `no-verify` if the provider's certificate is self-signed. |
-| `ALLOW_SIGNUP` | no | Defaults to `false` in production. Leave it off and use `create-admin`. |
+| `APP_URL` | yes | The public URL used in email links and the Google callback. Defaults to the first `APP_ORIGIN`. |
+| `ALLOW_SIGNUP` | no | Defaults to `false` in production, which keeps sign-up controlled: people join by invitation, or an operator runs `create-admin`. |
+| `ATTACHMENTS_DIR` | yes | Where uploaded files are stored. `/data/attachments` in the image; mount a persistent volume at `/data`. |
+| `MAX_UPLOAD_MB` | no | Largest upload, default 10. Plans also limit total storage per workspace. |
+| `SMTP_URL` | for email | `smtps://user:pass@host:465` or `smtp://user:pass@host:587?tls=required`. Any provider works (Postmark, SendGrid, Amazon SES, Mailgun). Without it nothing is emailed: invitations show a link to copy, and the app never reports an email as sent. |
+| `MAIL_FROM` | no | Sender, default `DeviceTrustline <no-reply@devicetrustline.com>`. The provider must allow this domain (SPF/DKIM). |
+| `REQUIRE_EMAIL_VERIFICATION` | no | New accounts must confirm their email before using the app. Defaults to on when `SMTP_URL` is set. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for Google sign-in | From a Google Cloud OAuth client of type "Web application". Authorized redirect URI: `APP_URL` + `/api/auth/google/callback`, for example `https://devicetrustline.com/api/auth/google/callback`. The secret stays on the server. |
 | `SESSION_HOURS` | no | Defaults to 8. |
-| `DISABLE_SCHEDULER` | no | `true` turns off automatic weekly and monthly audits on this instance. They are safe to leave on with several instances. |
+| `DISABLE_SCHEDULER` | no | `true` turns off background jobs on this instance (reminders, email delivery, automatic audits). They are safe to leave on with several instances; to run them elsewhere, call `devicetrustline run-jobs` from cron. |
 | `LOG_REQUESTS` | no | One JSON line per request on stdout. On by default in production. |
 
 ## Operations
@@ -61,8 +71,13 @@ Render's paid PostgreSQL plans include daily backups and point-in-time recovery.
 - **Health check:** `GET /api/health` returns 200 when the app can reach the database. Point your uptime monitor at it (UptimeRobot, Better Stack and similar tools all work). The Docker image and `render.yaml` already use it.
 - **Logs:** the app writes request logs and errors to stdout. View them with `docker compose … logs -f app`, or in your host's log viewer.
 - **Security:** sessions use httpOnly, SameSite cookies, which are `Secure` in production. Passwords are hashed with bcrypt. Sign-in is rate limited. Requests from other origins are refused. A strict Content-Security-Policy is set. Camera access is limited to this site. Every organization's data is isolated in the database.
-- **Account recovery:** admins reset a user's password from **Users**, which signs that user out everywhere.
+- **Account recovery:** with email set up, people reset their own password from the sign-in page. Without email there is no self-service reset (an account can belong to several workspaces, so workspace admins cannot set its password), which is one reason to set up `SMTP_URL` before going live.
+- **Plans:** limits per plan live in the database (`devicetrustline plans`, `set-plan-limit`, `set-workspace-plan`). No payment provider is connected, so the in-app upgrade button explains that and the operator changes plans with `set-workspace-plan`.
+- **Device companion:** the Windows `.exe` is built into the image. It is not code-signed yet, so Windows SmartScreen warns on first run; sign it with your certificate before wide distribution.
 
-## Not included yet
+## Before going live
 
-Email (invitations, self-service password reset, scheduled report emails) needs an email provider account, such as Postmark, SendGrid or Amazon SES. Once one is chosen, add it as a follow-up. Until then, admins create users with a temporary password.
+1. Choose hosting (Option A or B) and point DNS at it.
+2. Create an SMTP account and set `SMTP_URL` and `MAIL_FROM`, with SPF and DKIM for the sending domain.
+3. Optionally create a Google OAuth client and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+4. Run `create-admin`, sign in, and check `/api/health`.

@@ -15,7 +15,7 @@ if (!app) throw new Error('Run these tests with api/scripts/test-http.sh');
 // Direct database access, for checks the API itself would never allow.
 export const pool = new pg.Pool({ connectionString: databaseUrl });
 
-const server = (...args) => run(process.env.TEST_API_BIN, args, { env: { ...process.env, DATABASE_URL: databaseUrl } });
+const server = (...args) => run(process.env.TEST_API_BIN, args, { env: { ...process.env, DATABASE_URL: databaseUrl, MAIL_MODE: 'capture' } });
 
 export async function resetDatabase() {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
@@ -50,3 +50,19 @@ export async function userWithRole(adminAgent, role) {
   await agent.post('/api/auth/login').send({ email, password: PASSWORD }).expect(200);
   return { agent, email, id: res.body.id };
 }
+
+// Runs background jobs once (email delivery, reminders), as the server does every few seconds.
+export async function runJobs() {
+  const { stdout } = await server('run-jobs');
+  return JSON.parse(stdout);
+}
+
+// The latest captured email to an address (MAIL_MODE=capture), after delivering due mail.
+export async function lastEmail(to) {
+  await runJobs();
+  const { rows } = await pool.query(
+    'SELECT subject, body_text AS body, status, kind FROM email_outbox WHERE to_address = $1 ORDER BY id DESC LIMIT 1', [to]);
+  return rows[0];
+}
+
+export const tokenFrom = (body, param) => new URL(body.match(/https?:\/\/\S+/)[0]).searchParams.get(param);

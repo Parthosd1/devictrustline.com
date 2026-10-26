@@ -7,7 +7,17 @@ use crate::validate::Issue;
 
 #[derive(Debug)]
 pub enum AppError {
-    Http { status: StatusCode, message: String, details: Option<Value> },
+    Http {
+        status: StatusCode,
+        message: String,
+        details: Option<Value>,
+    },
+    /// An error the web app reacts to by its machine-readable `code`.
+    Coded {
+        status: StatusCode,
+        message: String,
+        code: &'static str,
+    },
     Invalid(Vec<Issue>),
     Db(sqlx::Error),
     Internal(String),
@@ -26,6 +36,10 @@ impl AppError {
             message: message.into(),
             details: Some(details),
         }
+    }
+
+    pub fn coded(status: u16, code: &'static str, message: impl Into<String>) -> Self {
+        AppError::Coded { status: StatusCode::from_u16(status).unwrap(), message: message.into(), code }
     }
 
     pub fn not_found(what: &str) -> Self {
@@ -80,6 +94,9 @@ impl IntoResponse for AppError {
                     body["details"] = details;
                 }
                 (status, Json(body)).into_response()
+            }
+            AppError::Coded { status, message, code } => {
+                (status, Json(json!({ "error": message, "code": code }))).into_response()
             }
             AppError::Invalid(issues) => {
                 (StatusCode::BAD_REQUEST, Json(json!({ "error": "Invalid request", "details": issues })))

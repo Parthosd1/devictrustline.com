@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::auth::User;
 use crate::db::Q;
 use crate::error::{AppError, Result};
-use crate::routes::assets::{record_event, ASSET_STATUSES, ASSET_TYPES};
+use crate::routes::assets::{record_event, ASSET_STATUSES};
 use crate::validate::{is_date, Input};
 use crate::web::Body;
 use crate::AppState;
@@ -43,7 +43,8 @@ fn cell(v: Option<&Value>) -> Option<String> {
 }
 
 /// Validates one row; returns it or the problems with it.
-fn parse_row(raw: &Map<String, Value>) -> std::result::Result<Row, Vec<String>> {
+/// `categories` are the workspace's category names.
+fn parse_row(raw: &Map<String, Value>, categories: &[&str]) -> std::result::Result<Row, Vec<String>> {
     let mut messages = vec![];
     let mut text = |key: &str, max: usize| -> Option<String> {
         let v = cell(raw.get(key))?.trim().to_string();
@@ -80,7 +81,7 @@ fn parse_row(raw: &Map<String, Value>) -> std::result::Result<Row, Vec<String>> 
             },
         }
     };
-    let kind = pick("type", ASSET_TYPES, true);
+    let kind = pick("type", categories, true);
     let status = pick("status", ASSET_STATUSES, false);
     let mut date = |key: &str| -> Option<String> {
         let v = cell(raw.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())?;
@@ -144,12 +145,17 @@ pub async fn import(State(state): State<AppState>, user: User, Body(body): Body)
     let dry_run = input.boolean_or("dryRun", true);
     input.strict()?;
     let org = user.org_id;
+    let names = {
+        let mut db = state.pool.acquire().await?;
+        crate::routes::catalog::category_names(&mut db, org).await?
+    };
+    let categories: Vec<&str> = names.iter().map(String::as_str).collect();
 
     let mut errors: Vec<(usize, Vec<String>)> = vec![];
     let parsed: Vec<Option<Row>> = rows
         .iter()
         .enumerate()
-        .map(|(i, raw)| match parse_row(raw.as_object().unwrap()) {
+        .map(|(i, raw)| match parse_row(raw.as_object().unwrap(), &categories) {
             Err(messages) => {
                 errors.push((i + 1, messages));
                 None
@@ -260,6 +266,7 @@ pub async fn import(State(state): State<AppState>, user: User, Body(body): Body)
                 .await?;
             locations.insert(format!("{}/{}", building.to_lowercase(), location.to_lowercase()), id);
         }
+        crate::routes::plans::check_limit_by(&mut tx, org, "items", parsed.len() as i64).await?;
         let first: i32 = Q::new(
             "UPDATE organizations SET next_asset_number = next_asset_number + $2 WHERE id = $1 RETURNING next_asset_number - $2",
         )
@@ -295,6 +302,9 @@ pub async fn import(State(state): State<AppState>, user: User, Body(body): Body)
             .bind(user.id)
             .scalar(&mut tx)
             .await?;
+            if let Some(date) = &row.warranty_expires {
+                crate::routes::warranties::set_primary(&mut tx, org, id, Some(date)).await?;
+            }
             let changes = json!({ "source": { "from": null, "to": "csv import" } });
             record_event(&mut tx, org, id, user.id, "created", changes).await?;
         }
@@ -315,17 +325,23 @@ pub async fn import(State(state): State<AppState>, user: User, Body(body): Body)
 mod tests {
     use super::*;
 
+    const CATEGORIES: &[&str] = &["Laptop", "Monitor"];
+
     #[test]
     fn rows_are_matched_case_insensitively_and_explained() {
         let ok = parse_row(
             json!({ "name": " Dell ", "type": "laptop", "status": "deployed", "serial": 7 }).as_object().unwrap(),
+            CATEGORIES,
         )
         .unwrap();
         assert_eq!((ok.name.as_str(), ok.kind.as_str(), ok.status.as_deref()), ("Dell", "Laptop", Some("Deployed")));
         assert_eq!(ok.serial.as_deref(), Some("7"));
-        let bad = parse_row(json!({ "name": "", "type": "Toaster", "purchaseDate": "1/2/2024" }).as_object().unwrap())
-            .err()
-            .unwrap();
+        let bad = parse_row(
+            json!({ "name": "", "type": "Toaster", "purchaseDate": "1/2/2024" }).as_object().unwrap(),
+            CATEGORIES,
+        )
+        .err()
+        .unwrap();
         assert_eq!(bad[0], "name: Required");
         assert!(bad[1].starts_with("type: \"Toaster\" is not one of: Laptop"));
         assert_eq!(bad[2], "purchaseDate: Use YYYY-MM-DD");

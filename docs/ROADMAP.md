@@ -5,14 +5,16 @@ Each phase ships as its own pull request (or a short series), keeps the existing
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1. Foundation | Node/Express API, PostgreSQL schema and migrations, sign-up/sign-in, five roles, organization isolation, buildings and locations, asset registry, append-only asset history, Docker, CI | **In review** |
-| 2. App on the API | Sign-in screen, inventory/buildings/maintenance pages backed by the API, user management, asset detail with history, UI polish. CSV export and search carry over. Audit checklists stay browser-only until phase 5 | **In review** |
-| 3. Assignments and relationships | Assign assets to people and workstations, check-out/check-in, parent-child assets (a workstation with its monitor, scanner and dock), moving a parent moves its children | **In review** |
-| 4. QR and barcode | Printable QR/barcode labels per asset tag, camera scanning in the browser, scan to look up, USB/Bluetooth scanner input. Scan-to-verify lands with audits in phase 5 | **In review** |
-| 5. Audits | Weekly and monthly audits run independently, each with its own scope, schedule, assignee, scan-based verification, discrepancy list (missing, unexpected, wrong location) and a locked, immutable record when closed. Automatic creation of each week's/month's audit comes with scheduled notifications in phase 7 | **In review** |
-| 6. Maintenance | Work orders with priority, assignee, vendor, cost and notes; status flow; full maintenance history on each asset | **In review** |
-| 7. Reporting and import | Reports page (status, type, building, assignment, warranties, maintenance cost, still-missing assets, recent audits) with CSV downloads; CSV import with validation, preview and all-or-nothing commit; automatic weekly/monthly audits; settings page with password change. Email summaries need an email provider and move to phase 8 | **In review** |
-| 8. Production | One production image serving the app and API, HTTPS with automatic certificates, nightly backups, Render blueprint for managed hosting, first-admin setup command, security headers, request logs, health checks ([docs/DEPLOYMENT.md](DEPLOYMENT.md)). Email invitations and password reset wait on choosing an email provider | **In review** |
+| 1. Foundation | Node/Express API, PostgreSQL schema and migrations, sign-up/sign-in, five roles, organization isolation, buildings and locations, asset registry, append-only asset history, Docker, CI | **Merged** |
+| 2. App on the API | Sign-in screen, inventory/buildings/maintenance pages backed by the API, user management, asset detail with history, UI polish. CSV export and search carry over. Audit checklists stay browser-only until phase 5 | **Merged** |
+| 3. Assignments and relationships | Assign assets to people and workstations, check-out/check-in, parent-child assets (a workstation with its monitor, scanner and dock), moving a parent moves its children | **Merged** |
+| 4. QR and barcode | Printable QR/barcode labels per asset tag, camera scanning in the browser, scan to look up, USB/Bluetooth scanner input. Scan-to-verify lands with audits in phase 5 | **Merged** |
+| 5. Audits | Weekly and monthly audits run independently, each with its own scope, schedule, assignee, scan-based verification, discrepancy list (missing, unexpected, wrong location) and a locked, immutable record when closed. Automatic creation of each week's/month's audit comes with scheduled notifications in phase 7 | **Merged** |
+| 6. Maintenance | Work orders with priority, assignee, vendor, cost and notes; status flow; full maintenance history on each asset | **Merged** |
+| 7. Reporting and import | Reports page (status, type, building, assignment, warranties, maintenance cost, still-missing assets, recent audits) with CSV downloads; CSV import with validation, preview and all-or-nothing commit; automatic weekly/monthly audits; settings page with password change. Email summaries need an email provider and move to phase 8 | **Merged** |
+| 8. Production | One production image serving the app and API, HTTPS with automatic certificates, nightly backups, Render blueprint for managed hosting, first-admin setup command, security headers, request logs, health checks ([docs/DEPLOYMENT.md](DEPLOYMENT.md)). Email invitations and password reset wait on choosing an email provider | **Merged** |
+| 9. Rust API | The Node API ported to Rust (Axum, SQLx) with the same endpoints, schema and tests | **Merged** |
+| Release 1 | Personal and business workspaces, invitations, email, Google sign-in, categories, tags, custom fields, attachments, warranties, reminders, notifications, insights, plans, Windows device companion, deployment tests. See [PROGRESS.md](../PROGRESS.md) | **In review** |
 
 ## Decisions so far
 

@@ -32,6 +32,8 @@ const GRANTS: &[(&str, &[&str])] = &[
     ("users:read", &["admin", "manager"]),
     ("users:manage", &["admin"]),
     ("settings:manage", &["admin"]),
+    ("catalog:manage", &["admin", "manager"]),
+    ("devices:manage", &["admin", "manager"]),
 ];
 
 pub fn can(role: &str, permission: &str) -> bool {
@@ -119,7 +121,8 @@ pub fn read_cookie(parts: &Parts, name: &str) -> Option<String> {
 #[derive(Clone, Default)]
 pub struct UserSlot(pub Arc<Mutex<Option<Uuid>>>);
 
-/// The signed-in user, loaded fresh on every request so deactivation and role changes apply at once.
+/// The signed-in user in their current workspace, loaded fresh on every request so deactivation
+/// and role changes apply at once.
 #[derive(Debug, Clone)]
 pub struct User {
     pub id: Uuid,
@@ -128,7 +131,18 @@ pub struct User {
     pub name: String,
     pub role: String,
     pub org_name: String,
+    pub org_kind: String,
+    pub email_verified: bool,
+    pub has_password: bool,
 }
+
+/// The same, but also for accounts that have not confirmed their email yet. Used by the few
+/// routes such a person needs (who am I, confirm email, sign out, switch workspace).
+pub struct SignedIn(pub User);
+
+pub const USER_SELECT: &str = "SELECT u.id, m.org_id, u.email, u.name, m.role, o.name AS org_name, o.kind AS org_kind,
+        u.email_verified_at IS NOT NULL AS email_verified, u.password_hash IS NOT NULL AS has_password
+   FROM users u JOIN memberships m ON m.user_id = u.id JOIN organizations o ON o.id = m.org_id";
 
 impl User {
     pub fn require(&self, permission: &str) -> Result<()> {
@@ -145,7 +159,9 @@ impl User {
             "email": self.email,
             "name": self.name,
             "role": self.role,
-            "organization": { "id": self.org_id, "name": self.org_name },
+            "emailVerified": self.email_verified,
+            "hasPassword": self.has_password,
+            "organization": { "id": self.org_id, "name": self.org_name, "kind": self.org_kind },
             "permissions": permissions_for(&self.role),
         })
     }
@@ -158,8 +174,21 @@ impl User {
             name: row["name"].as_str()?.to_string(),
             role: row["role"].as_str()?.to_string(),
             org_name: row["org_name"].as_str()?.to_string(),
+            org_kind: row["org_kind"].as_str().unwrap_or("business").to_string(),
+            email_verified: row["email_verified"] == true,
+            has_password: row["has_password"] != false,
         })
     }
+}
+
+/// Loads an account in one of its workspaces, if both the account and the membership are active.
+pub async fn load_user(db: &mut crate::db::Db, user_id: Uuid, org_id: Uuid) -> Result<Option<User>> {
+    let row = Q::new(format!("{USER_SELECT} WHERE u.id = $1 AND m.org_id = $2 AND u.is_active AND m.is_active"))
+        .bind(user_id)
+        .bind(org_id)
+        .opt(db)
+        .await?;
+    Ok(row.as_ref().and_then(User::from_row))
 }
 
 pub async fn authenticate(parts: &Parts, state: &AppState) -> Result<User> {
@@ -177,18 +206,12 @@ pub async fn authenticate(parts: &Parts, state: &AppState) -> Result<User> {
         return Err(invalid());
     };
     let mut db = state.pool.acquire().await?;
-    let row = Q::new(
-        "SELECT u.id, u.org_id, u.email, u.name, u.role, o.name AS org_name
-           FROM users u JOIN organizations o ON o.id = u.org_id
-          WHERE u.id = $1 AND u.org_id = $2 AND u.session_version = $3 AND u.is_active",
-    )
-    .bind(id)
-    .bind(org)
-    .bind(claims.ver)
-    .opt(&mut db)
-    .await?
-    .ok_or_else(invalid)?;
-    let user = User::from_row(&row).ok_or_else(invalid)?;
+    let version: Option<i32> =
+        Q::new("SELECT session_version FROM users WHERE id = $1").bind(id).scalars(&mut db).await?.into_iter().next();
+    if version != Some(claims.ver) {
+        return Err(invalid());
+    }
+    let user = load_user(&mut db, id, org).await?.ok_or_else(invalid)?;
     if let Some(slot) = parts.extensions.get::<UserSlot>() {
         *slot.0.lock().unwrap() = Some(user.id);
     }
@@ -199,7 +222,23 @@ impl FromRequestParts<AppState> for User {
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<User> {
-        authenticate(parts, state).await
+        let user = authenticate(parts, state).await?;
+        if state.config.require_email_verification && !user.email_verified {
+            return Err(AppError::coded(
+                403,
+                "email_unverified",
+                "Confirm your email address to continue. Check your inbox for the link.",
+            ));
+        }
+        Ok(user)
+    }
+}
+
+impl FromRequestParts<AppState> for SignedIn {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<SignedIn> {
+        authenticate(parts, state).await.map(SignedIn)
     }
 }
 
