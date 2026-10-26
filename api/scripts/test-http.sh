@@ -5,6 +5,8 @@
 set -eu
 cd "$(dirname "$0")/.."
 cargo build --quiet
+# The device companion, so the HTTP tests can drive the real program.
+cargo build --quiet --manifest-path ../agent/Cargo.toml
 export TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgres://postgres:postgres@localhost:5432/devicetrustline_test}"
 port="${TEST_PORT:-4100}"
 static_dir="$(mktemp -d)"
@@ -25,10 +27,11 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 bin="$(pwd)/target/debug/devicetrustline"
+agent_bin="$(cd ../agent && pwd)/target/debug/devicetrustline-agent"
 cd tests/http
 [ -d node_modules ] || npm ci --silent
 status=0
-TEST_API_URL="http://127.0.0.1:$port" TEST_API_BIN="$bin" TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+TEST_API_URL="http://127.0.0.1:$port" TEST_API_BIN="$bin" TEST_AGENT_BIN="$agent_bin" TEST_DATABASE_URL="$TEST_DATABASE_URL" \
   TEST_STATIC_DIR="$static_dir" npm test || status=$?
 [ $status -eq 0 ] || { echo "--- server log ---"; tail -50 "$log"; }
 exit $status

@@ -401,6 +401,14 @@ pub async fn pair(State(state): State<AppState>, Body(body): Body) -> Result<(St
     Ok((StatusCode::CREATED, Json(json!({ "agentId": id, "token": token, "workspace": workspace }))))
 }
 
+/// The agent removes itself (on uninstall): its credential stops working.
+pub async fn disconnect(State(state): State<AppState>, parts: Parts) -> Result<Json<Value>> {
+    let mut db = state.pool.acquire().await?;
+    let agent = agent_from(&parts, &mut db).await?;
+    Q::new("UPDATE device_agents SET revoked_at = now() WHERE id = $1").bind(agent.id).run(&mut db).await?;
+    Ok(Json(json!({ "disconnected": true })))
+}
+
 pub async fn status(State(state): State<AppState>, parts: Parts) -> Result<Json<Value>> {
     let mut db = state.pool.acquire().await?;
     let agent = agent_from(&parts, &mut db).await?;

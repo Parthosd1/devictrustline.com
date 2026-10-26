@@ -104,6 +104,7 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/discovered-devices/{id}/{action}", post(agents::set_device_state))
         .route("/api/agent/status", get(agents::status))
         .route("/api/agent/report", post(agents::report))
+        .route("/api/agent/disconnect", post(agents::disconnect))
         .route("/api/people", get(people::list).post(people::create))
         .route("/api/people/{id}", patch(people::update))
         .route("/api/audits", get(audits::list).post(audits::start))

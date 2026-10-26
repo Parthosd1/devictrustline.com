@@ -170,3 +170,37 @@ test('paired computers count toward the plan', async () => {
     await pool.query(`UPDATE plan_definitions SET limits = limits || '{"devices": 2}' WHERE code = 'personal_basic'`);
   }
 });
+
+test('the real device companion pairs, reports this computer, and disconnects', async () => {
+  const { execFile } = await import('node:child_process');
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const run = (args, env) => new Promise((resolve) => {
+    execFile(process.env.TEST_AGENT_BIN, args, { env: { ...process.env, ...env } }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr }));
+  });
+  const env = { DT_AGENT_CONFIG: join(mkdtempSync(join(tmpdir(), 'dt-agent-')), 'agent.json') };
+  const { agent: admin } = await newOrg('Agent Co');
+  const { code } = (await admin.post('/api/agents/pairing-codes').expect(201)).body;
+
+  assert.notEqual((await run(['pair', 'http://example.com', code], env)).code, 0, 'plain http is refused');
+  const paired = await run(['pair', app, code, '--name', 'CI-RUNNER'], env);
+  assert.equal(paired.code, 0, paired.stderr);
+  assert.match(paired.stdout, /Paired CI-RUNNER with Agent Co/);
+  const scan = await run(['scan'], env);
+  assert.equal(scan.code, 0, scan.stderr);
+  const report = await run(['report'], env);
+  assert.equal(report.code, 0, report.stderr);
+  assert.match(report.stdout, /Sent \d+ devices to Agent Co/);
+  const agents = (await admin.get('/api/agents')).body.items;
+  assert.equal(agents[0].name, 'CI-RUNNER');
+  assert.equal(agents[0].platform, 'linux');
+
+  assert.equal((await run(['pause'], env)).code, 0);
+  assert.notEqual((await run(['report'], env)).code, 0, 'paused locally');
+  await run(['resume'], env);
+  const off = await run(['disconnect'], env);
+  assert.match(off.stdout, /Disconnected from Agent Co/);
+  assert.ok((await admin.get('/api/agents')).body.items[0].revokedAt);
+  assert.notEqual((await run(['report'], env)).code, 0, 'forgotten after disconnecting');
+});

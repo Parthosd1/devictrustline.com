@@ -1,0 +1,21 @@
+[package]
+name = "devicetrustline-agent"
+version = "1.0.0"
+edition = "2021"
+description = "DeviceTrustline device companion: finds the hardware on a computer and sends it for review"
+license = "UNLICENSED"
+publish = false
+
+[[bin]]
+name = "devicetrustline-agent"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2.12", default-features = false, features = ["tls", "json"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

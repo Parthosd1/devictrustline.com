@@ -69,13 +69,71 @@ async fn main() {
                 scheduler::run_scheduled_audits(&pool, false).await.unwrap_or_else(|e| fail(format!("{e:?}")));
             println!("{}", serde_json::Value::Array(started));
         }
+        "plans" | "set-plan-limit" | "set-workspace-plan" => plans_command(&pool, &command).await,
         "run-jobs" => {
             let done = scheduler::run_jobs(&pool, &config).await.unwrap_or_else(|e| fail(format!("{e:?}")));
             println!("{done}");
         }
         other => fail(format!(
-            "Unknown command {other}. Use serve, migrate, create-admin, seed, run-scheduled-audits, run-jobs or healthcheck."
+            "Unknown command {other}. Use serve, migrate, create-admin, seed, run-scheduled-audits, run-jobs, plans, set-plan-limit, set-workspace-plan or healthcheck."
         )),
+    }
+}
+
+/// Operator commands for plans:
+///   devicetrustline plans                                  list plans and their limits
+///   devicetrustline set-plan-limit <plan> <limit> <n|none> e.g. set-plan-limit personal_basic items 250
+///   devicetrustline set-workspace-plan <owner email> <plan> moves that person's workspaces of the plan's kind
+async fn plans_command(pool: &PgPool, command: &str) {
+    let args: Vec<String> = std::env::args().skip(2).collect();
+    db::migrate(pool, false).await.unwrap_or_else(|e| fail(format!("{e:?}")));
+    let result = async {
+        let mut db = pool.acquire().await?;
+        match (command, args.as_slice()) {
+            ("plans", []) => {
+                let rows = Q::new("SELECT code, name, kind, limits FROM plan_definitions ORDER BY position").all(&mut db).await?;
+                for r in rows {
+                    println!("{:<16} {:<16} {:<9} {}", r["code"].as_str().unwrap_or(""), r["name"].as_str().unwrap_or(""), r["kind"].as_str().unwrap_or(""), r["limits"]);
+                }
+            }
+            ("set-plan-limit", [plan, key, value]) => {
+                if !routes::plans::LIMITS.iter().any(|(k, _)| k == key) {
+                    fail(format!("Unknown limit {key}. Use items, members, devices or storageMb."));
+                }
+                let value: serde_json::Value = match value.as_str() {
+                    "none" => serde_json::Value::Null,
+                    n => serde_json::json!(n.parse::<i64>().unwrap_or_else(|_| fail("The value must be a whole number or none"))),
+                };
+                let n = Q::new("UPDATE plan_definitions SET limits = jsonb_set(limits, ARRAY[$2], $3), updated_at = now() WHERE code = $1")
+                    .bind(plan)
+                    .bind(key)
+                    .bind(value)
+                    .run(&mut db)
+                    .await?;
+                if n == 0 {
+                    fail(format!("No plan {plan}"));
+                }
+                println!("Updated {plan}: {key}");
+            }
+            ("set-workspace-plan", [email, plan]) => {
+                let n = Q::new(
+                    "UPDATE organizations o SET plan = p.code FROM plan_definitions p, memberships m, users u
+                      WHERE p.code = $2 AND o.kind = p.kind AND m.org_id = o.id AND m.role = 'admin' AND u.id = m.user_id
+                        AND u.email = $1::citext",
+                )
+                .bind(email)
+                .bind(plan)
+                .run(&mut db)
+                .await?;
+                println!("Moved {n} workspace(s) administered by {email} to {plan}");
+            }
+            _ => fail("Usage: plans | set-plan-limit <plan> <limit> <n|none> | set-workspace-plan <admin email> <plan>"),
+        }
+        Ok::<_, error::AppError>(())
+    }
+    .await;
+    if let Err(e) = result {
+        fail(format!("{e:?}"));
     }
 }
 
