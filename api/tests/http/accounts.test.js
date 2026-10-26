@@ -12,7 +12,7 @@ const email = (p = 'person') => `${p}${++n}-${Date.now()}@example.com`;
 test('auth config tells the app what is available', async () => {
   const res = await request(app).get('/api/auth/config').expect(200);
   assert.equal(res.body.signup, true);
-  assert.equal(res.body.google, false);
+  assert.equal(res.body.google, true, "the test server runs with a stand-in Google");
   assert.equal(res.body.email, true);
 });
 

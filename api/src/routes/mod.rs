@@ -1,6 +1,7 @@
 pub mod assets;
 pub mod audits;
 pub mod auth;
+pub mod google;
 pub mod import;
 pub mod invitations;
 pub mod people;
@@ -45,6 +46,9 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/auth/me", get(auth::me))
         .route("/api/auth/config", get(auth::config))
+        .route("/api/auth/google/start", get(google::start))
+        .route("/api/auth/google/callback", get(google::callback))
+        .route("/api/auth/google", axum::routing::delete(google::unlink))
         .route("/api/auth/switch", post(auth::switch))
         .route("/api/account", get(auth::account).patch(auth::update_account))
         .route("/api/workspaces", get(auth::workspaces).post(auth::create_workspace_route))
