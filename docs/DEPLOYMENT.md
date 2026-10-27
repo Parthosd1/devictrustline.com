@@ -62,8 +62,10 @@ The backup container mounts the files volume read-only, so for the second comman
 | `MAIL_FROM` | no | Sender, default `DeviceTrustline <no-reply@devicetrustline.com>`. The provider must allow this domain (SPF/DKIM). |
 | `REQUIRE_EMAIL_VERIFICATION` | no | New accounts must confirm their email before using the app. Defaults to on when `SMTP_URL` is set. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for Google sign-in | From a Google Cloud OAuth client of type "Web application". Authorized redirect URI: `APP_URL` + `/api/auth/google/callback`, for example `https://devicetrustline.com/api/auth/google/callback`. The secret stays on the server. |
+| `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | for browser push | Keys that identify this server to browser push services. Generate once with `devicetrustline vapid-keys` and keep them: changing them signs every browser out of push. `VAPID_SUBJECT` is a `mailto:` or `https://` contact. `VAPID_PUBLIC_KEY` is optional and only checked against the private key. Without these, push is shown as not set up. |
+| `SMS_PROVIDER` | for text messages | `disabled` (default) or `twilio` with `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM` (a Twilio number in +E.164 form). `log` records messages without sending and is refused in production. |
 | `SESSION_HOURS` | no | Defaults to 8. |
-| `DISABLE_SCHEDULER` | no | `true` turns off background jobs on this instance (reminders, email delivery, automatic audits). They are safe to leave on with several instances; to run them elsewhere, call `devicetrustline run-jobs` from cron. |
+| `DISABLE_SCHEDULER` | no | `true` turns off background jobs on this instance (reminders, email, push and SMS delivery, automatic audits). They are safe to leave on with several instances; to run them elsewhere, call `devicetrustline run-jobs` from cron. |
 | `LOG_REQUESTS` | no | One JSON line per request on stdout. On by default in production. |
 
 ## Operations

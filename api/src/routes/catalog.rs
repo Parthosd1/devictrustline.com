@@ -28,8 +28,23 @@ const BUSINESS_CATEGORIES: &[&str] = &[
     "Accessory",
     "Other",
 ];
-const PERSONAL_CATEGORIES: &[&str] =
-    &["Electronics", "Appliances", "Furniture", "Tools", "Sports & Outdoors", "Vehicles", "Jewelry & Watches", "Other"];
+const PERSONAL_CATEGORIES: &[&str] = &[
+    "Electronics",
+    "Laptops & Computers",
+    "Phones & Tablets",
+    "TVs & Monitors",
+    "Printers",
+    "Routers & Networking",
+    "Gaming",
+    "Accessories",
+    "Appliances",
+    "Furniture",
+    "Tools",
+    "Sports & Outdoors",
+    "Vehicles",
+    "Jewelry & Watches",
+    "Other",
+];
 pub const FIELD_TYPES: &[&str] = &["text", "number", "date", "boolean", "select"];
 
 pub async fn seed_workspace(db: &mut Db, org: Uuid, kind: &str) -> Result<()> {

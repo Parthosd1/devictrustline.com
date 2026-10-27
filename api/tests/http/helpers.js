@@ -66,3 +66,14 @@ export async function lastEmail(to) {
 }
 
 export const tokenFrom = (body, param) => new URL(body.match(/https?:\/\/\S+/)[0]).searchParams.get(param);
+
+// Signs up a personal account and returns its agent.
+export async function newPersonal(name = 'Pat') {
+  const agent = request.agent(app);
+  const email = `person${++counter}-${Date.now()}@example.com`;
+  const res = await agent.post('/api/auth/signup').send({ accountType: 'personal', name, email, password: PASSWORD });
+  if (res.status !== 201) throw new Error(`signup failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return { agent, email, user: res.body.user };
+}
+
+export const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);

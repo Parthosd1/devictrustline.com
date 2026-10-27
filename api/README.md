@@ -94,6 +94,14 @@ They started as the black-box tests the earlier Node API passed and now cover re
 | POST | `/api/assets/import` `{rows, createSites?, dryRun?}` (up to 2,000 rows; nothing is saved unless every row is valid) | `assets:write` |
 | GET | `/api/reports/summary` | `assets:read` |
 | GET, PATCH | `/api/settings` `{autoAudits: {weekly, monthly}}` (PATCH is admin only) | `settings:manage` |
+| GET | `/api/assets/export?…` (same filters as the list, CSV) | `assets:read` |
+| POST | `/api/assets/:id/archive`, `/api/assets/:id/restore` (archived items leave lists, reminders and audits; `?archived=true\|all` lists them) | `assets:write` |
+| GET, POST | `/api/reminders?status=&assetId=&kind=`, `/api/reminders` `{kind, title?, notes?, assetId?, dateSource?, dueOn?, offsets?, repeat?, repeatEvery?, repeatUntil?}` | signed in (own reminders only) |
+| GET, PATCH, DELETE | `/api/reminders/:id` (GET includes each scheduled notification and its deliveries) | own reminder |
+| POST | `/api/reminders/:id/snooze` `{hours? \| until?}`, `/api/reminders/:id/complete` | own reminder |
+| GET, PATCH | `/api/notification-settings` `{enabled, email, push, sms, phone, timezone, quietStart, quietEnd, sendHour, defaultOffsets}` | signed in |
+| POST | `/api/notification-settings/test`; `/api/push/subscriptions` (a browser's PushSubscription); DELETE `/api/push/subscriptions` `{endpoint?}` | signed in |
+| DELETE | `/api/notifications/:id` | own notification |
 
 With `autoAudits` on, the API starts an organization-wide audit at the start of each week (Monday) or month, checked every 15 minutes. Set `DISABLE_SCHEDULER=true` to turn the scheduler off on extra instances; it is also safe to run on several instances at once.
 

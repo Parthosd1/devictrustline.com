@@ -60,7 +60,7 @@ pub const SELECT_TEMPLATE: &str = r#"
                     WHERE x.asset_id = a.id), '[]') AS tags,
          (SELECT count(*)::int FROM attachments f WHERE f.asset_id = a.id) AS "attachmentCount",
          (SELECT f.id FROM attachments f WHERE f.asset_id = a.id AND f.kind = 'photo' ORDER BY f.created_at LIMIT 1) AS "photoId",
-         a.created_at AS "createdAt", a.updated_at AS "updatedAt"
+         a.archived_at AS "archivedAt", a.created_at AS "createdAt", a.updated_at AS "updatedAt"
     FROM assets a
     JOIN organizations o ON o.id = a.org_id
     LEFT JOIN users ow ON ow.id = a.owner_id
@@ -266,7 +266,19 @@ pub async fn list(
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>> {
     user.require("assets:read")?;
-    let mut input = Input::query(&query);
+    let mut db = state.pool.acquire().await?;
+    let (items, total, limit, offset) = search(&mut db, &user, &query, 500).await?;
+    Ok(Json(json!({ "items": items, "total": total, "limit": limit, "offset": offset })))
+}
+
+/// The items matching a list query: (items, total matching, limit, offset).
+async fn search(
+    db: &mut Db,
+    user: &User,
+    query: &HashMap<String, String>,
+    max_limit: i64,
+) -> Result<(Vec<Value>, i32, i64, i64)> {
+    let mut input = Input::query(query);
     let q = input.str("q", Str::req(0, 200).optional());
     let status = input.one_of("status", ASSET_STATUSES, true, false);
     let kind = input.str("type", Str::req(1, 80).optional());
@@ -277,11 +289,17 @@ pub async fn list(
     let parent = input.uuid("parentId", true, false);
     let category = input.uuid("categoryId", true, false);
     let owner = input.uuid("ownerId", true, false);
-    let limit = input.int("limit", 1, 500, 100);
+    let archived = input.one_of_or("archived", &["false", "true", "all"], "false");
+    let limit = input.int("limit", 1, max_limit, 100.min(max_limit));
     let offset = input.int("offset", 0, i64::MAX, 0);
     input.done()?;
 
     let mut wheres = vec!["a.org_id = $1".to_string()];
+    match archived.as_str() {
+        "false" => wheres.push("a.archived_at IS NULL".into()),
+        "true" => wheres.push("a.archived_at IS NOT NULL".into()),
+        _ => {}
+    }
     let mut text_params: Vec<String> = vec![];
     let mut uuid_params: Vec<Uuid> = vec![];
     // Text parameters come first ($2, $3...), then UUIDs, so each keeps its own type.
@@ -337,12 +355,11 @@ pub async fn list(
         }
         q
     };
-    let mut db = state.pool.acquire().await?;
     let items = build(format!(
         "{} WHERE {where_sql} ORDER BY a.created_at DESC, a.asset_tag DESC LIMIT {limit} OFFSET {offset}",
         *SELECT
     ))
-    .all(&mut db)
+    .all(&mut *db)
     .await?;
     let total: i32 = build(format!(
         "SELECT count(*)::int AS total FROM assets a
@@ -350,9 +367,109 @@ pub async fn list(
            LEFT JOIN locations l ON l.id = a.location_id
            LEFT JOIN people pe ON pe.id = a.assigned_person_id WHERE {where_sql}"
     ))
-    .scalar(&mut db)
+    .scalar(&mut *db)
     .await?;
-    Ok(Json(json!({ "items": items, "total": total, "limit": limit, "offset": offset })))
+    Ok((items, total, limit, offset))
+}
+
+/// The same items as the list, as a CSV file (up to 10,000 rows).
+pub async fn export(
+    State(state): State<AppState>,
+    user: User,
+    Query(mut query): Query<HashMap<String, String>>,
+) -> Result<axum::response::Response> {
+    use axum::response::IntoResponse;
+    user.require("assets:read")?;
+    query.entry("limit".into()).or_insert_with(|| "10000".into());
+    let mut db = state.pool.acquire().await?;
+    let (items, ..) = search(&mut db, &user, &query, 10_000).await?;
+    let columns: &[(&str, &str)] = &[
+        ("assetTag", "Asset tag"),
+        ("name", "Name"),
+        ("type", "Category"),
+        ("manufacturer", "Brand"),
+        ("model", "Model"),
+        ("serial", "Serial"),
+        ("status", "Status"),
+        ("condition", "Condition"),
+        ("buildingName", "Place"),
+        ("locationName", "Location"),
+        ("ownerName", "Owner"),
+        ("assignedPersonName", "Assigned to"),
+        ("purchaseDate", "Purchase date"),
+        ("purchasePrice", "Price"),
+        ("currency", "Currency"),
+        ("seller", "Retailer"),
+        ("warrantyExpires", "Warranty ends"),
+        ("returnDeadline", "Return by"),
+        ("maintenanceDue", "Maintenance due"),
+        ("tags", "Tags"),
+        ("notes", "Notes"),
+        ("archivedAt", "Archived"),
+    ];
+    let cell = |v: &Value| -> String {
+        let text = match v {
+            Value::Null => String::new(),
+            Value::String(s) => s.clone(),
+            Value::Array(a) => a.iter().filter_map(|t| t.as_str()).collect::<Vec<_>>().join("; "),
+            other => other.to_string(),
+        };
+        // Quote every cell, and keep spreadsheet programs from running formulas in text.
+        let text = if text.starts_with(['=', '+', '-', '@']) { format!("'{text}") } else { text };
+        format!("\"{}\"", text.replace('"', "\"\""))
+    };
+    let mut csv = columns.iter().map(|(_, h)| cell(&json!(h))).collect::<Vec<_>>().join(",");
+    csv.push_str("\r\n");
+    for item in &items {
+        csv.push_str(&columns.iter().map(|(k, _)| cell(&item[*k])).collect::<Vec<_>>().join(","));
+        csv.push_str("\r\n");
+    }
+    let disposition = "attachment; filename=\"devicetrustline-items.csv\"".to_string();
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8".to_string()),
+            (axum::http::header::CONTENT_DISPOSITION, disposition),
+        ],
+        csv,
+    )
+        .into_response())
+}
+
+/// Archives an item: it leaves lists and reminders but keeps its history, and can be restored.
+pub async fn archive(State(state): State<AppState>, user: User, Path(id): Path<String>) -> Result<Json<Value>> {
+    set_archived(state, user, id, true).await
+}
+
+pub async fn restore(State(state): State<AppState>, user: User, Path(id): Path<String>) -> Result<Json<Value>> {
+    set_archived(state, user, id, false).await
+}
+
+async fn set_archived(state: AppState, user: User, id: String, archive: bool) -> Result<Json<Value>> {
+    user.require("assets:write")?;
+    let id = path_uuid(&id)?;
+    let mut tx = state.pool.begin().await?;
+    let current = Q::new("SELECT archived_at FROM assets WHERE org_id = $1 AND id = $2 FOR UPDATE OF assets")
+        .bind(user.org_id)
+        .bind(id)
+        .opt(&mut tx)
+        .await?
+        .ok_or_else(|| AppError::not_found("Asset"))?;
+    if current["archived_at"].is_null() == archive {
+        let at: Value = Q::new(
+            "UPDATE assets SET archived_at = CASE WHEN $3 THEN now() END, updated_at = now()
+              WHERE org_id = $1 AND id = $2 RETURNING COALESCE(to_json(archived_at), 'null'::json)",
+        )
+        .bind(user.org_id)
+        .bind(id)
+        .bind(archive)
+        .scalar(&mut tx)
+        .await?;
+        let changes = json!({ "archivedAt": { "from": current["archived_at"], "to": at } });
+        record_event(&mut tx, user.org_id, id, user.id, if archive { "archived" } else { "restored" }, changes).await?;
+    }
+    let asset = find_asset(&mut tx, user.org_id, id).await?;
+    tx.commit().await?;
+    Ok(Json(asset))
 }
 
 /// Resolves a scanned code: an asset tag, a serial number, or a DeviceTrustline label URL (…?asset=DT-1001).

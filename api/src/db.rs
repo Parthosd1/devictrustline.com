@@ -100,6 +100,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("007_item_registry.sql", include_str!("../migrations/007_item_registry.sql")),
     ("008_plans_warranties_reminders.sql", include_str!("../migrations/008_plans_warranties_reminders.sql")),
     ("009_device_agents.sql", include_str!("../migrations/009_device_agents.sql")),
+    ("010_personal_notifications.sql", include_str!("../migrations/010_personal_notifications.sql")),
 ];
 
 /// Applies every migration not yet recorded in schema_migrations, in order, each in its own

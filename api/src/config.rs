@@ -27,6 +27,9 @@ pub struct Config {
     pub max_upload_bytes: usize,
     /// New accounts must confirm their email before signing in (only when email delivery is configured).
     pub require_email_verification: bool,
+    /// Browser push (Web Push); None until VAPID keys are set.
+    pub push: Option<crate::push::PushConfig>,
+    pub sms: crate::sms::SmsConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -100,7 +103,33 @@ impl Config {
             (None, None) => None,
             _ => return Err("Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither".into()),
         };
+        let push = match (var("VAPID_PRIVATE_KEY"), var("VAPID_SUBJECT")) {
+            (Some(private), Some(subject)) => {
+                Some(crate::push::PushConfig::new(&private, var("VAPID_PUBLIC_KEY").as_deref(), &subject)?)
+            }
+            (None, _) => None,
+            (Some(_), None) => return Err("VAPID_PRIVATE_KEY needs VAPID_SUBJECT (mailto: or https: address)".into()),
+        };
+        let sms = match var("SMS_PROVIDER").as_deref() {
+            None | Some("disabled") => crate::sms::SmsConfig::Disabled,
+            Some("log") if is_production => return Err("SMS_PROVIDER=log is for local testing only".into()),
+            Some("log") => crate::sms::SmsConfig::Log,
+            Some("twilio") => match (var("TWILIO_ACCOUNT_SID"), var("TWILIO_AUTH_TOKEN"), var("TWILIO_FROM")) {
+                (Some(account_sid), Some(auth_token), Some(from)) => crate::sms::SmsConfig::Twilio {
+                    account_sid,
+                    auth_token,
+                    from,
+                    api_base: var("TWILIO_API_BASE").unwrap_or_else(|| "https://api.twilio.com".into()),
+                },
+                _ => {
+                    return Err("SMS_PROVIDER=twilio needs TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM".into())
+                }
+            },
+            Some(other) => return Err(format!("Unknown SMS_PROVIDER {other}. Use twilio, log or disabled.")),
+        };
         Ok(Config {
+            push,
+            sms,
             is_production,
             port: number("PORT", 4000)? as u16,
             database_url: required("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/devicetrustline")?,

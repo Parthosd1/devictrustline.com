@@ -36,6 +36,15 @@ services:
       # Google sign-in: leave both empty to hide the button.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Browser push: generate keys once with `docker compose run --rm app devicetrustline vapid-keys`.
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      # Text messages: off unless SMS_PROVIDER=twilio and the Twilio settings are filled in.
+      SMS_PROVIDER: ${SMS_PROVIDER:-disabled}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
     volumes:
       - attachments:/data

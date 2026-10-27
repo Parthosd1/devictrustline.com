@@ -176,7 +176,7 @@ pub async fn start_audit(db: &mut Db, a: NewAudit<'_>) -> Result<Uuid> {
     Q::new(
         "INSERT INTO audit_items (run_id, org_id, asset_id, expected_building_id, expected_location_id)
          SELECT $1, org_id, id, building_id, location_id FROM assets
-          WHERE org_id = $2 AND status <> 'Retired'
+          WHERE org_id = $2 AND status <> 'Retired' AND archived_at IS NULL
             AND ($3::uuid IS NULL OR building_id = $3) AND ($4::uuid IS NULL OR location_id = $4)",
     )
     .bind(id)
