@@ -12,7 +12,7 @@ const EMAIL_STATUS = {
 const ago = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 // The bell in the top bar and its panel. Checks for new notifications every minute.
-export function NotificationBell({ onOpenAsset }) {
+export function NotificationBell({ onOpenAsset, onViewAll }) {
   const [data, setData] = useState({ items: [], unread: 0 });
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -65,6 +65,7 @@ export function NotificationBell({ onOpenAsset }) {
               </li>
             ))}
           </ul>
+          {onViewAll && <button className="text-link bell-all" onClick={() => { setOpen(false); onViewAll(); }}>See all notifications and delivery</button>}
         </div>
       )}
     </div>

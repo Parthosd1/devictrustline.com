@@ -3,6 +3,7 @@ import { Bell, Globe, UserRound } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { ErrorBanner, Field } from '../components.jsx';
+import { EventPreferences, NotificationSettings, WorkspaceNotificationDefaults } from './Notifications.jsx';
 
 const REMINDER_ROWS = [
   ['warrantyDays', 'Warranty ending'], ['returnDays', 'Return window closing'], ['maintenanceDays', 'Maintenance due'],
@@ -46,10 +47,6 @@ function Account() {
           <Field label="Your name" wide><input required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <button className="outline" disabled={name === account.name}>Save</button>
         </form>
-        <label className="check">
-          <input type="checkbox" checked={account.emailNotifications} onChange={(e) => save({ emailNotifications: e.target.checked }, 'Saved.')} />
-          Email me reminders as well as showing them in the app
-        </label>
         {config.google && (
           <div className="copy-row">
             <span>Google sign-in: <strong>{account.googleLinked ? 'linked' : 'not linked'}</strong></span>
@@ -153,13 +150,13 @@ function AutoAudits() {
 
   return (
     <section className="panel settings-panel">
-      <div className="panel-head"><div><h2>Scheduled Audits</h2><p>Start an organization-wide audit automatically at the start of each period. Weekly and monthly audits run independently.</p></div></div>
+      <div className="panel-head"><div><h2>Scheduled Audits</h2><p>Start an organization-wide audit automatically at the start of each period. Each frequency runs independently.</p></div></div>
       <div className="settings-body">
         <ErrorBanner error={error} />
-        {settings && ['weekly', 'monthly'].map((p) => (
+        {settings && [['weekly', 'Monday'], ['monthly', '1st of the month'], ['quarterly', 'quarter (Jan, Apr, Jul, Oct)'], ['annual', 'January 1st']].map(([p, when]) => (
           <label className="check" key={p}>
-            <input type="checkbox" checked={settings.autoAudits[p]} disabled={!editable} onChange={(e) => toggle(p, e.target.checked)} />
-            Start a {p} audit every {p === 'weekly' ? 'Monday' : '1st of the month'}
+            <input type="checkbox" checked={Boolean(settings.autoAudits[p])} disabled={!editable} onChange={(e) => toggle(p, e.target.checked)} />
+            Start {p === 'annual' ? 'an' : 'a'} {p} audit every {when}
           </label>
         ))}
         {!editable && <p className="hint">Only administrators can change this.</p>}
@@ -212,9 +209,12 @@ export function Settings() {
   return (
     <div className="settings-grid">
       <Account />
+      <NotificationSettings />
       <Workspace />
       {user.organization.kind === 'business' && <AutoAudits />}
       <ChangePassword />
+      <EventPreferences />
+      <WorkspaceNotificationDefaults />
     </div>
   );
 }

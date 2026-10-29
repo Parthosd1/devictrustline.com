@@ -38,7 +38,8 @@ Each phase is stacked on the previous one.
 | 4 | `phase-4-loaners` | #15 → phase 3 | backend complete, tested |
 | 5 | `phase-5-audits` | #16 → phase 4 | backend complete, tested |
 | 6 | `phase-6-approvals` | #17 → phase 5 | backend complete, tested |
-| 7 | `phase-7-notifications` | (opening) → phase 6 | backend complete, tested |
+| 7 | `phase-7-notifications` | #18 → phase 6 | backend complete, tested |
+| 8 | `phase-8-ui` | (opening) → phase 7 | web pages complete, checked in a browser |
 
 ## Phase 1 — what was built
 
@@ -163,6 +164,25 @@ Each phase is stacked on the previous one.
 - SQL `member_sees_asset()`: notices about an item go only to people who may see it.
 - Routes: `GET / PUT /api/notification-settings/events`; `PATCH /api/settings {notifications}`.
 
+## Phase 8 — what was built
+
+- New pages: Approval Center (queue sections with approve / reject / send back inline, follow-up
+  tasks), Inventories & Transfers (tree, detail with items, create / edit / archive / restore,
+  transfer by scanned tags, transfer list with approve / reject / cancel, access requests),
+  Loaners (summary, filters, lend or reserve with acknowledgment, hand over, extend, check in with
+  damage, inspect, cancel, report lost, history, CSV), Reminders (create, edit, snooze, pause,
+  resume, done, delete, per-notification delivery), Notifications (full list with each channel's
+  delivery, mark read, delete).
+- Audits: weekly, monthly, quarterly, annual and one-off; audit types; inventory scope; drafts;
+  submit, approve, send back, reopen; damaged marking; duplicate scans; review history; CSV.
+- Users: owner role (only owners grant it), access scope with inventory picker on add, invite and
+  change; access requests panel.
+- Settings: personal channels (email, browser push via `public/sw.js`, SMS with phone), time zone,
+  quiet hours, send hour, default days, test send; per-group event preferences; admins' workspace
+  defaults; quarterly and annual automatic audits. The old "email me reminders" checkbox was the
+  same setting as the new Email channel and was removed from the account panel.
+- Responsive: the phone sidebar scrolls, tabs scroll sideways, forms never overflow at 390px.
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -192,8 +212,16 @@ Phase 6 (2026-10-29): fmt, clippy, 16 unit tests, 121/121 HTTP tests (3 new in
 Phase 7 (2026-10-29): fmt, clippy, 16 unit tests, 125/125 HTTP tests (4 new in
 `business-notifications.test.js`).
 
+Phase 8 (2026-10-29): `npm run build` passes. Browser walk-through with Playwright against the real
+API on a freshly seeded database: owner at 1366px creates an inventory, transfers by tag, lends
+with acknowledgment, checks in damaged, inspects to repair, adds a reminder, starts a full audit,
+scans (including a duplicate), submits it, changes an event preference and sends a test; a
+manager at 390px approves the audit from the Approval Center and opens every page. No console
+errors, no failed API calls, no horizontal overflow on any page at 390px. (The walk-through becomes
+a committed end-to-end test in Phase 11.)
+
 ## Next action
 
-Phase 8: responsive UI pages for everything built in phases 1–7 (reminders, notification center and
-settings, inventories and transfers, loaners, audits with review, approval center, delegated
-access); branch `phase-8-ui` on phase 7.
+Phase 9: plans (Free Personal, Personal Pro, Business, Enterprise) with server-side limits for
+items, members, inventories, notification channels and reports; billing reported as unconfigured;
+branch `phase-9-plans` on phase 8.

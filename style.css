@@ -252,3 +252,22 @@ tr.clickable:hover td{background:#f8faff}
 .outline.inline{padding:6px 10px}
 @media(max-width:900px){.detail-two{grid-template-columns:1fr}}
 @media(max-width:720px){.user-label{display:none}.pad,.usage,.plan-grid,.insights,.settings-body{padding-inline:20px}.copy-row{align-items:stretch;flex-direction:column}.workspace-menu{position:static;margin-top:8px}.detail-grid.compact{grid-template-columns:1fr}.top-right{gap:10px}.heading{flex-wrap:wrap}}
+/* Phase 8: inventories, loaners, approvals, reminders, notifications */
+.pad-x{padding-inline:28px}.tree-name{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.note-list{list-style:none;margin:0;padding:0 28px 18px}.note-list li{display:flex;gap:12px;align-items:flex-start;border-top:1px solid #edf1f6;padding:14px 0}
+.note-list li.unread .note-main strong::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#2f6fed;margin-right:8px;vertical-align:middle}
+.note-main{flex:1;display:grid;gap:3px;text-align:left;min-width:0}.note-main span{color:#4b5d78;font-size:13px;overflow-wrap:anywhere}.note-main small{color:#8392a8;font-size:12px}
+.bell-all{display:block;width:100%;padding:10px 16px;border-top:1px solid #edf1f6;text-align:center}
+.channel-grid td,.channel-grid th{text-align:center}.channel-grid td:first-child,.channel-grid th:first-child{text-align:left}
+.span-all{grid-column:1/-1}
+.queue-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:20px}.queue-grid .panel{margin:0}
+.queue-list{list-style:none;margin:0;padding:0 24px 16px}.queue-list li{border-top:1px solid #edf1f6;padding:12px 0}
+.queue-list li>span{display:grid;gap:5px}.queue-list small{color:#8392a8;font-size:12px}.queue-list .row-end{flex-wrap:wrap;justify-content:flex-start;gap:8px}
+.access-fields{display:grid;gap:6px;margin-top:12px}.access-fields .pick-list{max-height:220px;overflow:auto;border:1px solid #dfe5ee;border-radius:8px;padding:8px 12px}
+@media(max-width:900px){.queue-grid{grid-template-columns:1fr}}
+@media(max-width:720px){.pad-x,.note-list{padding-inline:20px}.queue-list{padding-inline:20px}}
+.tabs{max-width:100%;overflow-x:auto}.tabs button{white-space:nowrap}
+@media(max-width:720px){.sidebar{overflow-y:auto}}
+.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid .field label{overflow-wrap:anywhere}
+@media(max-width:720px){.form-grid{grid-template-columns:minmax(0,1fr)}}
+.q-btn{padding:6px 11px;font-size:12px;border-radius:7px;display:inline-flex;align-items:center;gap:5px}.all-clear{margin:0 0 16px}
