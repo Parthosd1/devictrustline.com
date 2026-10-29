@@ -20,7 +20,7 @@ test('business workspaces start with a hub and its sub-inventories; personal one
   const { invs, hub } = await setup();
   assert.deepEqual(invs.map((i) => i.path), [
     'Main IT Hub', 'Main IT Hub / Available Inventory', 'Main IT Hub / Deployment Inventory',
-    'Main IT Hub / Loaner Inventory', 'Main IT Hub / RMA / Repair Inventory', 'Main IT Hub / Returned Equipment',
+    'Main IT Hub / Loaner Inventory', 'Main IT Hub / Returned Equipment', 'Main IT Hub / RMA / Repair Inventory',
   ]);
   assert.equal(hub.kind, 'hub');
   assert.ok(invs.filter((i) => i.parentId === hub.id).every((i) => i.depth === 1));
