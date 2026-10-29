@@ -71,12 +71,15 @@ They started as the black-box tests the earlier Node API passed and now cover re
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/api/health` | public |
-| POST | `/api/auth/signup` | public, when `ALLOW_SIGNUP=true` (creates a workspace and its admin) |
+| POST | `/api/auth/signup` | public, when `ALLOW_SIGNUP=true` (creates a workspace and its owner) |
 | POST | `/api/auth/login`, `/api/auth/logout` | public |
 | GET | `/api/auth/me` | signed in |
 | POST | `/api/auth/change-password` | signed in |
 | GET | `/api/users` | `users:read` |
-| POST, PATCH | `/api/users`, `/api/users/:id` | `users:manage` |
+| POST, PATCH | `/api/users`, `/api/users/:id` `{name?, role?, isActive?, password?, accessScope?: 'all'\|'inventories', inventoryIds?}` (only owners make or change owners) | `users:manage` |
+| GET, POST, DELETE | `/api/invitations` `{email, role, accessScope?, inventoryIds?}`, `/api/invitations/:id` | `users:manage` (list: `users:read`) |
+| GET, POST | `/api/access-requests?status=` (own requests, inventories one may ask for; deciders see all), `/api/access-requests` `{inventoryId, note?}` | signed in |
+| POST | `/api/access-requests/:id/approve` `{note?}`, `/api/access-requests/:id/reject` `{note?}` | `access:approve` with access to everything, not one's own; `/cancel` by the requester |
 | GET | `/api/buildings` (with locations and counts) | `sites:read` |
 | POST, PATCH, DELETE | `/api/buildings[/:id]`, `/api/buildings/:id/locations`, `/api/locations/:id` | `sites:write` |
 | GET | `/api/assets?q=&status=&type=&buildingId=&locationId=&personId=&parentId=&limit=&offset=` | `assets:read` |
@@ -107,6 +110,8 @@ They started as the black-box tests the earlier Node API passed and now cover re
 | GET | `/api/transfers?status=&inventoryId=&assetId=&batchId=`, `/api/transfers/:id`; `/api/assets?inventoryId=<id\|none>&includeSub=true` | `inventory:read` |
 | POST | `/api/transfers` `{assetIds \| codes, toInventoryId, fromInventoryId?, reason?, includeComponents?}`, `/api/transfers/:id/cancel` (requester or approver) | `inventory:transfer` |
 | POST | `/api/transfers/:id/approve` `{note?}`, `/api/transfers/:id/reject` `{reason}` | `transfers:approve` |
+
+People whose access is limited to some inventories (`accessScope: 'inventories'`) reach only items, transfers, work orders and inventories inside the granted inventories and their sub-inventories; anything else answers 404. Reports, insights, devices, audits and import are closed to them; catalog, sites, people and settings are read-only.
 
 With `autoAudits` on, the API starts an organization-wide audit at the start of each week (Monday) or month, checked every 15 minutes. Set `DISABLE_SCHEDULER=true` to turn the scheduler off on extra instances; it is also safe to run on several instances at once.
 

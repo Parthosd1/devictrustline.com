@@ -15,6 +15,7 @@ use crate::db::{uuid_of, Q};
 use crate::error::{AppError, Result};
 use crate::mail::{self, Email};
 use crate::routes::auth::{issue_token, password, start_session, NewToken};
+use crate::routes::users::{check_owner_change, Access};
 use crate::tokens;
 use crate::validate::{path_uuid, Input, Str, EMAIL};
 use crate::web::Body;
@@ -27,8 +28,13 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     let mut input = Input::body(&body);
     let email = input.req("email", EMAIL);
     let role = input.one_of("role", ROLES, false, false).into_option();
+    let access = Access::read(&mut input).unwrap_or_else(Access::all);
     input.strict()?;
+    let role_name = role.clone().unwrap_or_default();
+    check_owner_change(&user, &role_name)?;
+    access.check_role(&role_name)?;
     let mut tx = state.pool.begin().await?;
+    access.check_inventories(&mut tx, user.org_id).await?;
     let member: i64 = Q::new(
         "SELECT count(*) FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.org_id = $1 AND u.email = $2::citext",
     )
@@ -58,6 +64,12 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
         ..Default::default()
     };
     let token = issue_token(&mut tx, invite).await?;
+    Q::new("UPDATE auth_tokens SET access_scope = $2, inventory_ids = $3 WHERE token_hash = $1")
+        .bind(tokens::hash(&token))
+        .bind(&access.scope)
+        .bind(access.inventories.clone())
+        .run(&mut tx)
+        .await?;
     let link = format!("{}/?invite={token}", state.config.app_url);
     let emailed = state.config.mail.available();
     if emailed {
@@ -81,7 +93,10 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     }
     tx.commit().await?;
     // Without an email provider the admin gets the link to pass on themselves.
-    let mut res = json!({ "email": email, "role": role, "emailed": emailed });
+    let mut res = json!({
+        "email": email, "role": role, "emailed": emailed,
+        "accessScope": access.scope, "inventoryIds": access.inventories,
+    });
     if !emailed {
         res["link"] = json!(link);
     }
@@ -93,7 +108,8 @@ pub async fn list(State(state): State<AppState>, user: User) -> Result<Json<Valu
     let mut db = state.pool.acquire().await?;
     let items = Q::new(
         r#"SELECT t.id, t.email::text AS email, t.role, t.created_at AS "createdAt", t.expires_at AS "expiresAt",
-                  u.name AS "invitedBy"
+                  u.name AS "invitedBy", COALESCE(t.access_scope, 'all') AS "accessScope",
+                  to_json(COALESCE(t.inventory_ids, '{}')) AS "inventoryIds"
              FROM auth_tokens t LEFT JOIN users u ON u.id = t.created_by
             WHERE t.purpose = 'invite' AND t.org_id = $1 AND t.used_at IS NULL AND t.revoked_at IS NULL AND t.expires_at > now()
             ORDER BY t.created_at DESC"#,
@@ -197,6 +213,33 @@ pub async fn accept(State(state): State<AppState>, parts: Parts, Body(body): Bod
             .await?
         }
     };
+    // The access the invitation gave; inventories archived or removed since are left out, and an
+    // invitation whose inventories are all gone gives no access rather than everything.
+    let access = Q::new(
+        "SELECT COALESCE(t.access_scope, 'all') AS scope,
+                to_json(ARRAY(SELECT i.id FROM inventories i
+                               WHERE i.org_id = t.org_id AND i.id = ANY(t.inventory_ids) AND i.archived_at IS NULL)) AS ids
+           FROM auth_tokens t WHERE t.id = $1",
+    )
+    .bind(uuid_of(&invite["id"]))
+    .one(&mut tx)
+    .await?;
+    let inventories: Vec<Uuid> =
+        access["ids"].as_array().map(|a| a.iter().filter_map(uuid_of).collect()).unwrap_or_default();
+    let access = Access { scope: access["scope"].as_str().unwrap_or("all").to_string(), inventories };
+    if access.scope == "inventories" && access.inventories.is_empty() {
+        return Err(AppError::coded(
+            409,
+            "invite_inventories_gone",
+            "The inventories this invitation gave access to no longer exist. Ask for a new invitation.",
+        ));
+    }
+    // Someone rejoining keeps no access from before: the membership is reset to what was invited.
+    Q::new("UPDATE memberships SET access_scope = 'all' WHERE org_id = $1 AND user_id = $2")
+        .bind(org)
+        .bind(user_id)
+        .run(&mut tx)
+        .await?;
     Q::new(
         "INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, $3)
          ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role, is_active = true",
@@ -206,6 +249,7 @@ pub async fn accept(State(state): State<AppState>, parts: Parts, Body(body): Bod
     .bind(invite["role"].as_str())
     .run(&mut tx)
     .await?;
+    access.apply(&mut tx, org, user_id, uuid_of(&invite["created_by"])).await?;
     let res = start_session(&state, &mut tx, user_id, org, StatusCode::OK).await?;
     tx.commit().await?;
     Ok(res)

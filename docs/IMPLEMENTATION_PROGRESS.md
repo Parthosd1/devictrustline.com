@@ -33,7 +33,8 @@ Each phase is stacked on the previous one.
 | Phase | Branch | PR | Status |
 |---|---|---|---|
 | 1 | `phase-1-personal-notifications` | #12 → main | backend complete, tested |
-| 2 | `phase-2-inventories` | (opening) → phase 1 | backend complete, tested |
+| 2 | `phase-2-inventories` | #13 → phase 1 | backend complete, tested |
+| 3 | `phase-3-delegated-access` | (opening) → phase 2 | backend complete, tested |
 
 ## Phase 1 — what was built
 
@@ -65,6 +66,31 @@ Each phase is stacked on the previous one.
 - Permissions: `inventory:read` (all), `inventory:manage` and `transfers:approve` (admin, manager),
   `inventory:transfer` (admin, manager, technician).
 
+## Phase 3 — what was built
+
+- Migration 012: `owner` role (each workspace's longest-standing active admin becomes its owner;
+  owners hold every admin permission plus `workspace:own`), `memberships.access_scope`
+  (`all` | `inventories`, never limited for owners and admins), `inventory_grants`, invitation
+  tokens carrying `access_scope` and `inventory_ids`, `access_requests` (one pending per person
+  and inventory).
+- Sign-up and new workspaces make their creator the owner. Only owners make, change or remove
+  owners; a workspace always keeps one active owner (owners are locked during the check).
+- `src/scope.rs`: middleware enforcing limited access on every route that takes an item,
+  attachment, warranty, work order, transfer or inventory id (outside access answers 404, exactly
+  like another workspace); reports, insights, devices, audits and bulk import are closed to limited
+  users, and catalog, sites, people and settings are read-only for them. Lists (items, CSV export,
+  inventories, transfers, work orders, deadlines) filter in SQL by the same scope. A user's scope
+  is the granted inventories plus all their sub-inventories, recomputed on every request, so
+  changes apply without signing in again.
+- Users: `accessScope` / `inventoryIds` on create and update (validated against active
+  inventories of the workspace); promotion to admin or owner widens access to everything.
+- Invitations carry access; on acceptance it is applied (inventories archived since are dropped;
+  if none remain the invitation is refused rather than widened). Expiry and revoke unchanged.
+- Access requests: limited users ask for an inventory; managers and admins with full access
+  approve (adds the grant) or reject; no self-decision; the requester may cancel; both sides are
+  notified.
+- Audits are closed to limited users for now; Phase 5 adds inventory-based audits that respect scope.
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -75,7 +101,12 @@ stand-in push service, SMS retry, quiet hours, archive and export).
 Phase 2 (2026-10-29): fmt, clippy, 16 unit tests, 101/101 HTTP tests (7 new in
 `inventories.test.js`: workflows 3 (inventory part), 4 and 14 (transfers)).
 
+Phase 3 (2026-10-29): fmt, clippy, 16 unit tests, 108/108 HTTP tests (7 new in
+`delegated-access.test.js`: workflow 3 (delegation), workflow 13 (cross-workspace), scoped
+manager, owner / admin rules, read-only roles, invitations with access, expiry and revoke, access
+requests; `rbac.test.js` rewritten for owner rules).
+
 ## Next action
 
-Phase 3: owner role, inventory-scoped access grants enforced on the server, invitations
-carrying grants, on branch `phase-3-delegated-access` stacked on phase 2.
+Phase 4: loaner system (Available → Reserved → Deployed → Returned → Inspected → Available, with
+exceptions), on branch `phase-4-loaners` stacked on phase 3.

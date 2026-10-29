@@ -8,7 +8,7 @@ after(() => pool.end());
 
 test('signup creates an organization admin and a session', async () => {
   const { agent, user } = await newOrg('Acme');
-  assert.equal(user.role, 'admin');
+  assert.equal(user.role, 'owner');
   assert.equal(user.organization.name, 'Acme');
   assert.ok(user.permissions.includes('users:manage'));
   const me = await agent.get('/api/auth/me').expect(200);

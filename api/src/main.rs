@@ -15,6 +15,7 @@ mod push;
 mod reminders;
 mod routes;
 mod scheduler;
+mod scope;
 mod sms;
 mod tokens;
 mod user_reminders;
@@ -41,7 +42,9 @@ pub struct AppState {
 }
 
 pub fn app(state: AppState) -> Router {
-    let mut router = routes::api(&state).layer(from_fn_with_state(state.clone(), web::check_origin));
+    let mut router = routes::api(&state)
+        .layer(from_fn_with_state(state.clone(), scope::guard))
+        .layer(from_fn_with_state(state.clone(), web::check_origin));
     if let Some(dir) = &state.config.static_dir {
         router = router.merge(web::web_app(dir));
     }
@@ -127,7 +130,7 @@ async fn plans_command(pool: &PgPool, command: &str) {
             ("set-workspace-plan", [email, plan]) => {
                 let n = Q::new(
                     "UPDATE organizations o SET plan = p.code FROM plan_definitions p, memberships m, users u
-                      WHERE p.code = $2 AND o.kind = p.kind AND m.org_id = o.id AND m.role = 'admin' AND u.id = m.user_id
+                      WHERE p.code = $2 AND o.kind = p.kind AND m.org_id = o.id AND m.role IN ('owner', 'admin') AND u.id = m.user_id
                         AND u.email = $1::citext",
                 )
                 .bind(email)

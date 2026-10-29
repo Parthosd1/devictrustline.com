@@ -1,3 +1,4 @@
+pub mod access_requests;
 pub mod agents;
 pub mod assets;
 pub mod attachments;
@@ -131,6 +132,10 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/transfers/{id}/approve", post(transfers::approve))
         .route("/api/transfers/{id}/reject", post(transfers::reject))
         .route("/api/transfers/{id}/cancel", post(transfers::cancel))
+        .route("/api/access-requests", get(access_requests::list).post(access_requests::create))
+        .route("/api/access-requests/{id}/approve", post(access_requests::approve))
+        .route("/api/access-requests/{id}/reject", post(access_requests::reject))
+        .route("/api/access-requests/{id}/cancel", post(access_requests::cancel))
         .route("/api/people", get(people::list).post(people::create))
         .route("/api/people/{id}", patch(people::update))
         .route("/api/audits", get(audits::list).post(audits::start))

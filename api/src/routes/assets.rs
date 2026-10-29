@@ -300,7 +300,7 @@ async fn search(
     let offset = input.int("offset", 0, i64::MAX, 0);
     input.done()?;
 
-    let mut wheres = vec!["a.org_id = $1".to_string()];
+    let mut wheres = vec!["a.org_id = $1".to_string(), user.scope_sql("a", 2)];
     match archived.as_str() {
         "false" => wheres.push("a.archived_at IS NULL".into()),
         "true" => wheres.push("a.archived_at IS NOT NULL".into()),
@@ -308,10 +308,10 @@ async fn search(
     }
     let mut text_params: Vec<String> = vec![];
     let mut uuid_params: Vec<Uuid> = vec![];
-    // Text parameters come first ($2, $3...), then UUIDs, so each keeps its own type.
+    // The scope is $2; text parameters come next ($3, $4...), then UUIDs, so each keeps its own type.
     let mut text = |sql: &str, v: String, wheres: &mut Vec<String>| {
         text_params.push(v);
-        wheres.push(sql.replace('?', &format!("${}", text_params.len() + 1)));
+        wheres.push(sql.replace('?', &format!("${}", text_params.len() + 2)));
     };
     if let Some(q) = q.into_option().filter(|q| !q.is_empty()) {
         let escaped: String =
@@ -336,7 +336,7 @@ async fn search(
             &mut wheres,
         );
     }
-    let first_uuid = text_params.len() + 2;
+    let first_uuid = text_params.len() + 3;
     for (column, value) in [
         ("a.building_id", building),
         ("a.location_id", location),
@@ -371,7 +371,7 @@ async fn search(
     }
     let where_sql = wheres.join(" AND ");
     let build = |sql: String| {
-        let mut q = Q::new(sql).bind(user.org_id);
+        let mut q = Q::new(sql).bind(user.org_id).bind(user.scope_param());
         for t in &text_params {
             q = q.bind(t.clone());
         }
@@ -538,7 +538,10 @@ pub async fn lookup(
     let code = input.req("code", Str::req(1, 500));
     input.done()?;
     let mut db = state.pool.acquire().await?;
-    Ok(Json(find_by_code(&mut db, user.org_id, &code).await?))
+    let asset = find_by_code(&mut db, user.org_id, &code).await?;
+    user.require_asset(&asset)
+        .map_err(|_| AppError::new(404, format!("No asset matches “{}”", parse_scanned_code(&code))))?;
+    Ok(Json(asset))
 }
 
 pub async fn get(State(state): State<AppState>, user: User, Path(id): Path<String>) -> Result<Json<Value>> {
@@ -546,11 +549,16 @@ pub async fn get(State(state): State<AppState>, user: User, Path(id): Path<Strin
     let id = path_uuid(&id)?;
     let mut db = state.pool.acquire().await?;
     let mut asset = find_asset(&mut db, user.org_id, id).await?;
-    let children = Q::new(format!("{} WHERE a.org_id = $1 AND a.parent_asset_id = $2 ORDER BY a.asset_tag", *SELECT))
-        .bind(user.org_id)
-        .bind(id)
-        .all(&mut db)
-        .await?;
+    let children = Q::new(format!(
+        "{} WHERE a.org_id = $1 AND a.parent_asset_id = $2 AND {} ORDER BY a.asset_tag",
+        *SELECT,
+        user.scope_sql("a", 3)
+    ))
+    .bind(user.org_id)
+    .bind(id)
+    .bind(user.scope_param())
+    .all(&mut db)
+    .await?;
     asset["children"] = json!(children);
     Ok(Json(asset))
 }
@@ -584,7 +592,16 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     let mut tx = state.pool.begin().await?;
     finish_validation(input, &mut tx, org, &mut fields).await?;
     crate::routes::plans::check_limit(&mut tx, org, "items").await?;
+    if user.scope.is_some() && inventory.is_none() {
+        return Err(AppError::Invalid(vec![crate::validate::Issue::new(
+            "inventoryId",
+            "Choose one of your inventories for this item",
+        )]));
+    }
     if let Some(inv) = inventory {
+        if !user.sees_inventory(Some(inv)) {
+            return Err(AppError::new(400, "Inventory not found"));
+        }
         let active: i64 =
             Q::new("SELECT count(*) FROM inventories WHERE org_id = $1 AND id = $2 AND archived_at IS NULL")
                 .bind(org)

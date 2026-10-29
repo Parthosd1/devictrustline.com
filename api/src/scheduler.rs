@@ -47,9 +47,11 @@ pub async fn run_scheduled_audits(pool: &PgPool, log: bool) -> Result<Vec<Value>
             if existing > 0 {
                 continue;
             }
-            // Scheduled audits are attributed to the organization's longest-standing active admin.
+            // Scheduled audits are attributed to the organization's longest-standing active owner
+            // (or admin).
             let admin: Option<Uuid> = Q::new(
-                "SELECT user_id FROM memberships WHERE org_id = $1 AND role = 'admin' AND is_active ORDER BY created_at LIMIT 1",
+                "SELECT user_id FROM memberships WHERE org_id = $1 AND role IN ('owner', 'admin') AND is_active
+                  ORDER BY role = 'owner' DESC, created_at LIMIT 1",
             )
             .bind(org_id)
             .scalars(&mut tx)

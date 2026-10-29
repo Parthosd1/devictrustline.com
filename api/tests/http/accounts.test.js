@@ -22,7 +22,7 @@ test('personal sign-up needs no organization name and creates a personal workspa
     .send({ accountType: 'personal', name: 'Sam', email: email(), password: PASSWORD }).expect(201);
   assert.equal(res.body.user.organization.kind, 'personal');
   assert.equal(res.body.user.organization.name, "Sam's things");
-  assert.equal(res.body.user.role, 'admin');
+  assert.equal(res.body.user.role, 'owner');
   // Business sign-up still needs a name.
   await request(app).post('/api/auth/signup')
     .send({ accountType: 'business', name: 'B', email: email(), password: PASSWORD }).expect(400);

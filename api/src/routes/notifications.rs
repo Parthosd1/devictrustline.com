@@ -95,9 +95,11 @@ pub async fn deadlines(
              FROM d JOIN organizations o ON o.id = d.org_id
             WHERE d.org_id = $1 AND d.due_on <= (now() AT TIME ZONE o.timezone)::date + {days}
               AND d.due_on >= (now() AT TIME ZONE o.timezone)::date - 30
+              AND ($2::uuid[] IS NULL OR (SELECT inventory_id FROM assets WHERE id = d.asset_id) = ANY($2))
             ORDER BY d.due_on, d.title LIMIT 200"#
     ))
     .bind(user.org_id)
+    .bind(user.scope_param())
     .all(&mut db)
     .await?;
     Ok(Json(json!({ "items": items, "days": days })))

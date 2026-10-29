@@ -169,13 +169,17 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     let asset_name: Option<String> = match asset {
         Some(a) => {
             user.require("assets:read")?;
-            let name: Option<String> = Q::new("SELECT name FROM assets WHERE org_id = $1 AND id = $2")
-                .bind(user.org_id)
-                .bind(a)
-                .scalars(&mut tx)
-                .await?
-                .into_iter()
-                .next();
+            let name: Option<String> = Q::new(format!(
+                "SELECT a.name FROM assets a WHERE a.org_id = $1 AND a.id = $2 AND {}",
+                user.scope_sql("a", 3)
+            ))
+            .bind(user.org_id)
+            .bind(a)
+            .bind(user.scope_param())
+            .scalars(&mut tx)
+            .await?
+            .into_iter()
+            .next();
             Some(name.ok_or_else(|| AppError::new(400, "Item not found"))?)
         }
         None => None,
