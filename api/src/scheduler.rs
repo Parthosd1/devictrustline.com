@@ -88,6 +88,7 @@ pub async fn run_jobs(pool: &PgPool, config: &Config) -> Result<Value> {
     let (jobs_created, jobs_cancelled) = crate::user_reminders::sync(pool).await?;
     let jobs_fired = crate::user_reminders::fire(pool, config).await?;
     let emails = crate::mail::deliver_due(pool, &config.mail).await?;
+    let overdue_loans = crate::routes::loans::notify_overdue(pool, config).await?;
     let pushed = crate::notify::deliver_due(pool, config).await?;
     let mut done = crate::reminders::summary(created, cancelled, fired);
     done["emailsSent"] = json!(emails);
@@ -95,6 +96,7 @@ pub async fn run_jobs(pool: &PgPool, config: &Config) -> Result<Value> {
     done["reminderJobsCancelled"] = json!(jobs_cancelled);
     done["reminderJobsFired"] = json!(jobs_fired);
     done["deliveriesSent"] = json!(pushed);
+    done["overdueLoans"] = json!(overdue_loans);
     Ok(done)
 }
 

@@ -40,6 +40,9 @@ const GRANTS: &[(&str, &[&str])] = &[
     ("inventory:transfer", &["admin", "manager", "technician"]),
     ("transfers:approve", &["admin", "manager"]),
     ("access:approve", &["admin", "manager"]),
+    ("loans:read", &["admin", "manager", "technician", "auditor", "viewer"]),
+    ("loans:manage", &["admin", "manager", "technician"]),
+    ("loans:resolve", &["admin", "manager"]),
     ("workspace:own", &["owner"]),
 ];
 
@@ -311,7 +314,7 @@ mod tests {
         assert!(can("owner", "users:manage") && can("owner", "workspace:own") && !can("admin", "workspace:own"));
         assert_eq!(
             permissions_for("viewer"),
-            ["assets:read", "sites:read", "audits:read", "maintenance:read", "inventory:read"]
+            ["assets:read", "sites:read", "audits:read", "maintenance:read", "inventory:read", "loans:read"]
         );
     }
 

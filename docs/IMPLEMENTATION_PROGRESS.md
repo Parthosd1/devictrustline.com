@@ -34,7 +34,8 @@ Each phase is stacked on the previous one.
 |---|---|---|---|
 | 1 | `phase-1-personal-notifications` | #12 → main | backend complete, tested |
 | 2 | `phase-2-inventories` | #13 → phase 1 | backend complete, tested |
-| 3 | `phase-3-delegated-access` | (opening) → phase 2 | backend complete, tested |
+| 3 | `phase-3-delegated-access` | #14 → phase 2 | backend complete, tested |
+| 4 | `phase-4-loaners` | (opening) → phase 3 | backend complete, tested |
 
 ## Phase 1 — what was built
 
@@ -91,6 +92,27 @@ Each phase is stacked on the previous one.
   notified.
 - Audits are closed to limited users for now; Phase 5 adds inventory-based audits that respect scope.
 
+## Phase 4 — what was built
+
+- Migration 013: `loans` (numbered LN-1001…, reserved → deployed → returned → inspected, plus
+  cancelled and lost; one open loan per item by unique index; closed loans immutable by trigger),
+  `loan_events` (append-only history), `organizations.next_loan_number`.
+- `src/routes/loans.rs`: reserve (by id or scanned code; item must be in a loaner inventory or one
+  inside it, available, unassigned; optional `deployNow`), deploy with borrower acknowledgment and
+  checkout condition, extend (reason required; technicians once, managers again), return (condition,
+  damage note; damaged items go to Maintenance), inspect (`ready` → Available, `repair` →
+  Maintenance, note required), cancel a reservation, report lost (managers and admins).
+- The item's assignment and `loan_due` follow the loan, so the existing due-back reminders still
+  fire; plain assign / return is refused while a loan is out or awaiting inspection.
+- Overdue job (every background run): one `overdue` record and one notification per due date to
+  owners, admins and managers with full access and to the loaner inventory's custodian.
+- Reports: list summary (reserved, deployed, overdue, awaiting inspection, lost, completed in 30
+  days, average loan days, damaged returns), filters, and CSV export. Scope rules from Phase 3 apply.
+- Permissions: `loans:read` (all roles), `loans:manage` (admin, manager, technician),
+  `loans:resolve` (admin, manager).
+- CI fix carried from Phase 2: the inventory tree sorts by lowercased names with byte collation, so
+  the order no longer depends on the database locale (CI uses en_US, local used C).
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -106,7 +128,11 @@ Phase 3 (2026-10-29): fmt, clippy, 16 unit tests, 108/108 HTTP tests (7 new in
 manager, owner / admin rules, read-only roles, invitations with access, expiry and revoke, access
 requests; `rbac.test.js` rewritten for owner rules).
 
+Phase 4 (2026-10-29): fmt, clippy, 16 unit tests, 113/113 HTTP tests under an en_US database (5 new in
+`loaners.test.js`: full lifecycle, eligibility, exceptions, overdue notices and reports, scope and
+cross-workspace).
+
 ## Next action
 
-Phase 4: loaner system (Available → Reserved → Deployed → Returned → Inspected → Available, with
-exceptions), on branch `phase-4-loaners` stacked on phase 3.
+Phase 5: audit types (soft, full hub, spot, transfer, return), frequencies, Draft → In Progress →
+Submitted → Approved / Rejected → Locked, no self-approval; branch `phase-5-audits` on phase 4.

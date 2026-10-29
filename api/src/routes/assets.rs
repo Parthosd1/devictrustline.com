@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::Json;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
@@ -403,7 +404,6 @@ pub async fn export(
     user: User,
     Query(mut query): Query<HashMap<String, String>>,
 ) -> Result<axum::response::Response> {
-    use axum::response::IntoResponse;
     user.require("assets:read")?;
     query.entry("limit".into()).or_insert_with(|| "10000".into());
     let mut db = state.pool.acquire().await?;
@@ -432,6 +432,11 @@ pub async fn export(
         ("notes", "Notes"),
         ("archivedAt", "Archived"),
     ];
+    Ok(csv_response(columns, &items, "devicetrustline-items.csv"))
+}
+
+/// A CSV download with the given columns (key, heading).
+pub fn csv_response(columns: &[(&str, &str)], items: &[Value], filename: &str) -> axum::response::Response {
     let cell = |v: &Value| -> String {
         let text = match v {
             Value::Null => String::new(),
@@ -445,19 +450,19 @@ pub async fn export(
     };
     let mut csv = columns.iter().map(|(_, h)| cell(&json!(h))).collect::<Vec<_>>().join(",");
     csv.push_str("\r\n");
-    for item in &items {
+    for item in items {
         csv.push_str(&columns.iter().map(|(k, _)| cell(&item[*k])).collect::<Vec<_>>().join(","));
         csv.push_str("\r\n");
     }
-    let disposition = "attachment; filename=\"devicetrustline-items.csv\"".to_string();
-    Ok((
+    let disposition = format!("attachment; filename=\"{filename}\"");
+    (
         [
             (axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8".to_string()),
             (axum::http::header::CONTENT_DISPOSITION, disposition),
         ],
         csv,
     )
-        .into_response())
+        .into_response()
 }
 
 /// Archives an item: it leaves lists and reminders but keeps its history, and can be restored.
@@ -840,12 +845,12 @@ async fn move_assets(
     Ok(())
 }
 
-struct Person {
-    id: Uuid,
-    name: String,
+pub struct Person {
+    pub id: Uuid,
+    pub name: String,
 }
 
-async fn find_person(db: &mut Db, org_id: Uuid, id: Uuid) -> Result<Person> {
+pub async fn find_person(db: &mut Db, org_id: Uuid, id: Uuid) -> Result<Person> {
     let p = Q::new("SELECT id, name, is_active FROM people WHERE org_id = $1 AND id = $2")
         .bind(org_id)
         .bind(id)
@@ -860,7 +865,7 @@ async fn find_person(db: &mut Db, org_id: Uuid, id: Uuid) -> Result<Person> {
 }
 
 /// Assigns or returns an asset (and by default its components), recording one event per asset.
-async fn set_assignment(
+pub async fn set_assignment(
     db: &mut Db,
     user: &User,
     id: Uuid,
@@ -948,6 +953,7 @@ pub async fn assign(
     let due = input.str("dueDate", DATE).into_option();
     input.strict()?;
     let mut tx = state.pool.begin().await?;
+    crate::routes::loans::refuse_if_on_loan(&mut tx, user.org_id, id).await?;
     let person = find_person(&mut tx, user.org_id, person_id.into_option().unwrap()).await?;
     set_assignment(&mut tx, &user, id, Some(&person), "", include, note).await?;
     Q::new("UPDATE assets SET loan_due = $3::date WHERE org_id = $1 AND id = $2")
@@ -975,6 +981,7 @@ pub async fn return_asset(
     let note = input.str("note", Str::text(500)).into_option();
     input.strict()?;
     let mut tx = state.pool.begin().await?;
+    crate::routes::loans::refuse_if_on_loan(&mut tx, user.org_id, id).await?;
     set_assignment(&mut tx, &user, id, None, &status, include, note).await?;
     Q::new(
         "UPDATE assets SET loan_due = NULL WHERE org_id = $1 AND assigned_person_id IS NULL AND loan_due IS NOT NULL",

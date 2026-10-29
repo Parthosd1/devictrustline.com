@@ -111,6 +111,10 @@ They started as the black-box tests the earlier Node API passed and now cover re
 | POST | `/api/transfers` `{assetIds \| codes, toInventoryId, fromInventoryId?, reason?, includeComponents?}`, `/api/transfers/:id/cancel` (requester or approver) | `inventory:transfer` |
 | POST | `/api/transfers/:id/approve` `{note?}`, `/api/transfers/:id/reject` `{reason}` | `transfers:approve` |
 
+| GET | `/api/loans?status=&overdue=&personId=&assetId=` (with `summary`), `/api/loans/export` (CSV), `/api/loans/:id` (with events) | `loans:read` |
+| POST | `/api/loans` `{assetId \| code, personId, dueOn, startsOn?, purpose?, deployNow?, acknowledgedName?}`, `/api/loans/:id/deploy` `{acknowledgedName?, condition?, note?}`, `/extend` `{dueOn, reason}`, `/return` `{condition?, damaged?, note?}`, `/inspect` `{result: ready\|repair, note?}`, `/cancel` `{reason?}` | `loans:manage` |
+| POST | `/api/loans/:id/lost` `{note}`; extending a loan a second time | `loans:resolve` |
+
 People whose access is limited to some inventories (`accessScope: 'inventories'`) reach only items, transfers, work orders and inventories inside the granted inventories and their sub-inventories; anything else answers 404. Reports, insights, devices, audits and import are closed to them; catalog, sites, people and settings are read-only.
 
 With `autoAudits` on, the API starts an organization-wide audit at the start of each week (Monday) or month, checked every 15 minutes. Set `DISABLE_SCHEDULER=true` to turn the scheduler off on extra instances; it is also safe to run on several instances at once.
