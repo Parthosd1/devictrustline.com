@@ -16,8 +16,7 @@ pub fn with_defaults(settings: &Value) -> Value {
     for (_, key, days) in DEFAULT_DAYS {
         reminders[*key] = json!(days);
     }
-    let mut out =
-        json!({ "autoAudits": { "weekly": false, "monthly": false }, "reminders": reminders, "currency": null });
+    let mut out = json!({ "autoAudits": { "weekly": false, "monthly": false, "quarterly": false, "annual": false }, "reminders": reminders, "currency": null });
     if let Some(map) = settings.as_object() {
         for (k, v) in map {
             match (out.get_mut(k), v.as_object()) {
@@ -63,9 +62,13 @@ fn day_list(input: &mut Input, key: &str) -> Option<Vec<i64>> {
 pub async fn update(State(state): State<AppState>, user: User, Body(body): Body) -> Result<Json<Value>> {
     user.require("settings:manage")?;
     let mut input = Input::body(&body);
-    let mut auto = (None, None);
+    let mut auto = vec![];
     input.object("autoAudits", |a| {
-        auto = (a.boolean("weekly", false).into_option(), a.boolean("monthly", false).into_option());
+        for period in ["weekly", "monthly", "quarterly", "annual"] {
+            if let Some(on) = a.boolean(period, false).into_option() {
+                auto.push((period, on));
+            }
+        }
     });
     let mut reminders = serde_json::Map::new();
     input.object("reminders", |r| {
@@ -104,11 +107,8 @@ pub async fn update(State(state): State<AppState>, user: User, Body(body): Body)
     let settings: Value =
         Q::new("SELECT settings FROM organizations WHERE id = $1 FOR UPDATE").bind(user.org_id).scalar(&mut tx).await?;
     let mut next = with_defaults(&settings);
-    if let Some(weekly) = auto.0 {
-        next["autoAudits"]["weekly"] = json!(weekly);
-    }
-    if let Some(monthly) = auto.1 {
-        next["autoAudits"]["monthly"] = json!(monthly);
+    for (period, on) in auto {
+        next["autoAudits"][period] = json!(on);
     }
     for (k, v) in reminders {
         next["reminders"][k] = v;

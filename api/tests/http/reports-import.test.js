@@ -69,7 +69,7 @@ test('reports summarize inventory, warranties, maintenance and audits', async ()
 
 test('automatic audits open once per week and month for organizations that turn them on', async () => {
   await admin.agent.patch('/api/settings').send({ autoAudits: { weekly: true } }).expect(200);
-  assert.deepEqual((await admin.agent.get('/api/settings').expect(200)).body.autoAudits, { weekly: true, monthly: false });
+  assert.deepEqual((await admin.agent.get('/api/settings').expect(200)).body.autoAudits, { weekly: true, monthly: false, quarterly: false, annual: false });
   const tech = await userWithRole(admin.agent, 'technician');
   await tech.agent.patch('/api/settings').send({ autoAudits: { monthly: true } }).expect(403);
 
