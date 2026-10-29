@@ -37,15 +37,24 @@ test('role changes apply to existing sessions', async () => {
   await user.agent.post('/api/assets').send({ ...asset, serial: 'PROMOTE' }).expect(201);
 });
 
-test('the last active admin cannot be demoted or deactivated', async () => {
-  const { agent: admin, user } = await newOrg();
-  await admin.patch(`/api/users/${user.id}`).send({ role: 'manager' }).expect(409);
-  await admin.patch(`/api/users/${user.id}`).send({ isActive: false }).expect(409);
-  const second = await userWithRole(admin, 'admin');
-  await admin.patch(`/api/users/${second.id}`).send({ role: 'viewer' }).expect(200);
-  await admin.patch(`/api/users/${second.id}`).send({ role: 'admin' }).expect(200);
-  const res = await admin.patch(`/api/users/${user.id}`).send({ role: 'manager' }).expect(200);
+test('the last active owner cannot be demoted or deactivated, and only owners manage owners', async () => {
+  const { agent: owner, user } = await newOrg();
+  assert.equal(user.role, 'owner');
+  await owner.patch(`/api/users/${user.id}`).send({ role: 'admin' }).expect(409);
+  await owner.patch(`/api/users/${user.id}`).send({ isActive: false }).expect(409);
+  const admin = await userWithRole(owner, 'admin');
+  // Admins cannot make owners, change an owner, or remove one.
+  await admin.agent.post('/api/users')
+    .send({ name: 'o', email: `o${Date.now()}@example.com`, role: 'owner', password: 'long enough password' }).expect(403);
+  await admin.agent.patch(`/api/users/${user.id}`).send({ role: 'viewer' }).expect(403);
+  await admin.agent.patch(`/api/users/${user.id}`).send({ isActive: false }).expect(403);
+  await admin.agent.patch(`/api/users/${admin.id}`).send({ role: 'owner' }).expect(403);
+  await admin.agent.post('/api/invitations').send({ email: `inv${Date.now()}@example.com`, role: 'owner' }).expect(403);
+  // An owner hands ownership over, and can then step down.
+  await owner.patch(`/api/users/${admin.id}`).send({ role: 'owner' }).expect(200);
+  const res = await owner.patch(`/api/users/${user.id}`).send({ role: 'manager' }).expect(200);
   assert.equal(res.body.role, 'manager');
+  await admin.agent.patch(`/api/users/${admin.id}`).send({ role: 'admin' }).expect(409);
 });
 
 test('admin password reset signs the user out', async () => {

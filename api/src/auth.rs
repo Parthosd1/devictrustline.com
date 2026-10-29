@@ -16,9 +16,10 @@ use crate::AppState;
 pub const SESSION_COOKIE: &str = "dt_session";
 const BCRYPT_COST: u32 = 12;
 
-pub const ROLES: &[&str] = &["admin", "manager", "technician", "auditor", "viewer"];
+pub const ROLES: &[&str] = &["owner", "admin", "manager", "technician", "auditor", "viewer"];
 
-/// Which roles hold each permission. New features add their permissions here.
+/// Which roles hold each permission. New features add their permissions here. Owners hold every
+/// admin permission as well as their own.
 const GRANTS: &[(&str, &[&str])] = &[
     ("assets:read", &["admin", "manager", "technician", "auditor", "viewer"]),
     ("assets:write", &["admin", "manager", "technician"]),
@@ -38,14 +39,20 @@ const GRANTS: &[(&str, &[&str])] = &[
     ("inventory:manage", &["admin", "manager"]),
     ("inventory:transfer", &["admin", "manager", "technician"]),
     ("transfers:approve", &["admin", "manager"]),
+    ("access:approve", &["admin", "manager"]),
+    ("workspace:own", &["owner"]),
 ];
 
+fn holds(roles: &[&str], role: &str) -> bool {
+    roles.contains(&role) || (role == "owner" && roles.contains(&"admin"))
+}
+
 pub fn can(role: &str, permission: &str) -> bool {
-    GRANTS.iter().any(|(p, roles)| *p == permission && roles.contains(&role))
+    GRANTS.iter().any(|(p, roles)| *p == permission && holds(roles, role))
 }
 
 pub fn permissions_for(role: &str) -> Vec<&'static str> {
-    GRANTS.iter().filter(|(_, roles)| roles.contains(&role)).map(|(p, _)| *p).collect()
+    GRANTS.iter().filter(|(_, roles)| holds(roles, role)).map(|(p, _)| *p).collect()
 }
 
 pub async fn hash_password(password: String) -> Result<String> {
@@ -138,6 +145,9 @@ pub struct User {
     pub org_kind: String,
     pub email_verified: bool,
     pub has_password: bool,
+    /// The inventories this person may see and act on (granted ones and everything below them),
+    /// or None for the whole workspace.
+    pub scope: Option<Vec<Uuid>>,
 }
 
 /// The same, but also for accounts that have not confirmed their email yet. Used by the few
@@ -145,7 +155,13 @@ pub struct User {
 pub struct SignedIn(pub User);
 
 pub const USER_SELECT: &str = "SELECT u.id, m.org_id, u.email, u.name, m.role, o.name AS org_name, o.kind AS org_kind,
-        u.email_verified_at IS NOT NULL AS email_verified, u.password_hash IS NOT NULL AS has_password
+        u.email_verified_at IS NOT NULL AS email_verified, u.password_hash IS NOT NULL AS has_password,
+        CASE WHEN m.access_scope = 'inventories' THEN
+          (WITH RECURSIVE t AS (
+             SELECT g.inventory_id AS id, 0 AS depth FROM inventory_grants g WHERE g.org_id = m.org_id AND g.user_id = u.id
+             UNION SELECT c.id, t.depth + 1 FROM inventories c JOIN t ON c.parent_id = t.id WHERE t.depth < 20)
+           SELECT COALESCE(json_agg(DISTINCT id), '[]') FROM t)
+        END AS scope
    FROM users u JOIN memberships m ON m.user_id = u.id JOIN organizations o ON o.id = m.org_id";
 
 impl User {
@@ -155,6 +171,39 @@ impl User {
         } else {
             Err(AppError::new(403, "You do not have permission to do that"))
         }
+    }
+
+    /// Whether this person may see and act on things in this inventory (None: no inventory).
+    pub fn sees_inventory(&self, inventory: Option<Uuid>) -> bool {
+        match (&self.scope, inventory) {
+            (None, _) => true,
+            (Some(allowed), Some(id)) => allowed.contains(&id),
+            (Some(_), None) => false,
+        }
+    }
+
+    /// Refuses an inventory outside this person's access, as if it did not exist.
+    pub fn require_inventory(&self, inventory: Option<Uuid>, what: &str) -> Result<()> {
+        if self.sees_inventory(inventory) {
+            Ok(())
+        } else {
+            Err(AppError::not_found(what))
+        }
+    }
+
+    /// Refuses an item (a row with `inventoryId`) outside this person's access.
+    pub fn require_asset(&self, asset: &Value) -> Result<()> {
+        self.require_inventory(crate::db::uuid_of(&asset["inventoryId"]), "Asset")
+    }
+
+    /// The SQL condition limiting items (alias `a`) to this person's access, using parameter $n.
+    /// Bind `scope_param()` there.
+    pub fn scope_sql(&self, alias: &str, n: usize) -> String {
+        format!("(${n}::uuid[] IS NULL OR {alias}.inventory_id = ANY(${n}::uuid[]))")
+    }
+
+    pub fn scope_param(&self) -> Option<Vec<Uuid>> {
+        self.scope.clone()
     }
 
     pub fn public(&self) -> Value {
@@ -167,6 +216,7 @@ impl User {
             "hasPassword": self.has_password,
             "organization": { "id": self.org_id, "name": self.org_name, "kind": self.org_kind },
             "permissions": permissions_for(&self.role),
+            "access": { "scope": if self.scope.is_some() { "inventories" } else { "all" }, "inventoryIds": self.scope },
         })
     }
 
@@ -181,6 +231,7 @@ impl User {
             org_kind: row["org_kind"].as_str().unwrap_or("business").to_string(),
             email_verified: row["email_verified"] == true,
             has_password: row["has_password"] != false,
+            scope: row["scope"].as_array().map(|a| a.iter().filter_map(crate::db::uuid_of).collect()),
         })
     }
 }
@@ -257,6 +308,7 @@ mod tests {
         assert!(can("auditor", "audits:perform"));
         assert!(!can("manager", "users:manage"));
         assert!(!can("nobody", "assets:read"));
+        assert!(can("owner", "users:manage") && can("owner", "workspace:own") && !can("admin", "workspace:own"));
         assert_eq!(
             permissions_for("viewer"),
             ["assets:read", "sites:read", "audits:read", "maintenance:read", "inventory:read"]

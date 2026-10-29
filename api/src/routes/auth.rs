@@ -52,7 +52,7 @@ pub async fn start_session(
     Ok((status, [(SET_COOKIE, cookie)], Json(json!({ "user": user.public() }))).into_response())
 }
 
-/// Creates a workspace with `user_id` as its admin, plus its starting categories and reminder rules.
+/// Creates a workspace with `user_id` as its owner, plus its starting categories and reminder rules.
 pub async fn create_workspace(db: &mut Db, user_id: Uuid, name: &str, kind: &str) -> Result<Uuid> {
     let plan = if kind == "personal" { "personal_basic" } else { "business" };
     let org: Uuid = Q::new("INSERT INTO organizations (name, kind, plan) VALUES ($1, $2, $3) RETURNING id")
@@ -61,7 +61,7 @@ pub async fn create_workspace(db: &mut Db, user_id: Uuid, name: &str, kind: &str
         .bind(plan)
         .scalar(&mut *db)
         .await?;
-    Q::new("INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'admin')")
+    Q::new("INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'owner')")
         .bind(org)
         .bind(user_id)
         .run(&mut *db)
@@ -110,7 +110,7 @@ pub async fn consume_token(db: &mut Db, purpose: &str, token: &str) -> Result<Op
     Q::new(
         "UPDATE auth_tokens SET used_at = now()
           WHERE token_hash = $1 AND purpose = $2 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()
-          RETURNING id, user_id, org_id, email::text AS email, role",
+          RETURNING id, user_id, org_id, email::text AS email, role, created_by",
     )
     .bind(tokens::hash(token))
     .bind(purpose)
@@ -281,7 +281,7 @@ pub async fn create_workspace_route(
     let mut tx = state.pool.begin().await?;
     let id = create_workspace(&mut tx, user.id, &name, &kind).await?;
     tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(json!({ "id": id, "name": name, "kind": kind, "role": "admin", "current": false }))))
+    Ok((StatusCode::CREATED, Json(json!({ "id": id, "name": name, "kind": kind, "role": "owner", "current": false }))))
 }
 
 pub async fn switch(State(state): State<AppState>, SignedIn(user): SignedIn, Body(body): Body) -> Result<Response> {

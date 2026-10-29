@@ -84,13 +84,18 @@ pub async fn list(
         _ => "",
     };
     let mut db = state.pool.acquire().await?;
-    let items = Q::new(format!("{} WHERE i.org_id = $1 {filter} ORDER BY tree.sort COLLATE \"C\"", select()))
-        .bind(user.org_id)
-        .all(&mut db)
-        .await?;
+    let items = Q::new(format!(
+        "{} WHERE i.org_id = $1 AND ($2::uuid[] IS NULL OR i.id = ANY($2)) {filter} ORDER BY tree.sort COLLATE \"C\"",
+        select()
+    ))
+    .bind(user.org_id)
+    .bind(user.scope_param())
+    .all(&mut db)
+    .await?;
     let unassigned: i64 =
-        Q::new("SELECT count(*) FROM assets WHERE org_id = $1 AND inventory_id IS NULL AND archived_at IS NULL")
+        Q::new("SELECT count(*) FROM assets WHERE org_id = $1 AND inventory_id IS NULL AND archived_at IS NULL AND $2::uuid[] IS NULL")
             .bind(user.org_id)
+            .bind(user.scope_param())
             .scalar(&mut db)
             .await?;
     Ok(Json(json!({ "items": items, "unassigned": unassigned })))
@@ -102,11 +107,15 @@ pub async fn get(State(state): State<AppState>, user: User, Path(id): Path<Strin
     let mut db = state.pool.acquire().await?;
     let mut inv = find(&mut db, user.org_id, id).await?;
     inv["children"] = json!(
-        Q::new(format!("{} WHERE i.org_id = $1 AND i.parent_id = $2 ORDER BY i.name", select()))
-            .bind(user.org_id)
-            .bind(id)
-            .all(&mut db)
-            .await?
+        Q::new(format!(
+            "{} WHERE i.org_id = $1 AND i.parent_id = $2 AND ($3::uuid[] IS NULL OR i.id = ANY($3)) ORDER BY i.name",
+            select()
+        ))
+        .bind(user.org_id)
+        .bind(id)
+        .bind(user.scope_param())
+        .all(&mut db)
+        .await?
     );
     inv["byStatus"] = Q::new(
         "SELECT COALESCE(json_object_agg(status, n), '{}') FROM
@@ -181,6 +190,10 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     let mut input = Input::body(&body);
     let f = fields(&mut input, false);
     input.strict()?;
+    // Someone with limited access adds sub-inventories only inside what they were given.
+    if user.scope.is_some() && !user.sees_inventory(f.parent.value().copied()) {
+        return Err(AppError::new(400, "Parent inventory not found"));
+    }
     let mut tx = state.pool.begin().await?;
     check_references(&mut tx, user.org_id, &f, None).await?;
     crate::routes::plans::check_limit(&mut tx, user.org_id, "inventories").await?;
@@ -231,6 +244,9 @@ pub async fn update(
     let current = find(&mut tx, user.org_id, id).await?;
     if !current["archivedAt"].is_null() {
         return Err(AppError::new(409, "Restore this inventory before changing it"));
+    }
+    if user.scope.is_some() && f.parent.is_present() && !user.sees_inventory(f.parent.value().copied()) {
+        return Err(AppError::new(400, "Parent inventory not found"));
     }
     check_references(&mut tx, user.org_id, &f, Some(id)).await?;
     // A building without a location clears the old location.

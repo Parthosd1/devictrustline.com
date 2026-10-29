@@ -118,13 +118,13 @@ pub async fn list(
     let limit = input.int("limit", 1, 500, 200);
     input.done()?;
 
-    let mut wheres = vec!["w.org_id = $1".to_string()];
+    let mut wheres = vec!["w.org_id = $1".to_string(), user.scope_sql("a", 2)];
     let mut status_param = None;
     match status.value().map(String::as_str) {
         Some("active") => wheres.push("w.status IN ('open', 'in_progress', 'waiting_parts')".into()),
         Some("closed") => wheres.push("w.status IN ('resolved', 'cancelled')".into()),
         Some(s) => {
-            wheres.push("w.status = $2".into());
+            wheres.push("w.status = $3".into());
             status_param = Some(s.to_string());
         }
         None => {}
@@ -133,7 +133,7 @@ pub async fn list(
     for (column, value) in [("w.asset_id", asset), ("w.assignee_id", assignee)] {
         if let Opt::Val(u) = value {
             uuids.push(u);
-            wheres.push(format!("{column} = ${}", 1 + status_param.is_some() as usize + uuids.len()));
+            wheres.push(format!("{column} = ${}", 2 + status_param.is_some() as usize + uuids.len()));
         }
     }
     let mut q = Q::new(format!(
@@ -142,7 +142,8 @@ pub async fn list(
                    w.opened_at DESC LIMIT {limit}",
         wheres.join(" AND ")
     ))
-    .bind(user.org_id);
+    .bind(user.org_id)
+    .bind(user.scope_param());
     if let Some(s) = status_param {
         q = q.bind(s);
     }
@@ -159,7 +160,7 @@ pub async fn assignees(State(state): State<AppState>, user: User) -> Result<Json
     let mut db = state.pool.acquire().await?;
     let items = Q::new(
         "SELECT u.id, u.name, m.role FROM memberships m JOIN users u ON u.id = m.user_id
-          WHERE m.org_id = $1 AND m.is_active AND u.is_active AND m.role IN ('admin', 'manager', 'technician') ORDER BY u.name",
+          WHERE m.org_id = $1 AND m.is_active AND u.is_active AND m.role IN ('owner', 'admin', 'manager', 'technician') ORDER BY u.name",
     )
     .bind(user.org_id)
     .all(&mut db)
@@ -184,11 +185,12 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     let org = user.org_id;
 
     let mut tx = state.pool.begin().await?;
-    let asset = Q::new("SELECT status FROM assets WHERE org_id = $1 AND id = $2")
+    let asset = Q::new(r#"SELECT status, inventory_id AS "inventoryId" FROM assets WHERE org_id = $1 AND id = $2"#)
         .bind(org)
         .bind(asset_id)
         .opt(&mut tx)
         .await?
+        .filter(|a| user.require_asset(a).is_ok())
         .ok_or_else(|| AppError::new(400, "Asset not found"))?;
     if asset["status"] == "Retired" {
         return Err(AppError::new(409, "Retired assets cannot get work orders"));

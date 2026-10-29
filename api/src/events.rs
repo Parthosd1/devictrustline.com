@@ -152,3 +152,81 @@ pub async fn transfer_decided(state: &AppState, org: Uuid, transfer: Uuid) {
         Err(e) => eprintln!("notify transfer decision: {e:?}"),
     }
 }
+
+/// Tells the people who decide access requests (with access to everything) that one is waiting.
+pub async fn access_requested(state: &AppState, org: Uuid, request: Uuid) {
+    let result: Result<Vec<Event>> = async {
+        let mut db = state.pool.acquire().await?;
+        let r = Q::new(
+            "SELECT r.user_id, u.name AS requester, i.name AS inventory FROM access_requests r
+               JOIN users u ON u.id = r.user_id JOIN inventories i ON i.id = r.inventory_id WHERE r.id = $1",
+        )
+        .bind(request)
+        .one(&mut db)
+        .await?;
+        let deciders: Vec<Uuid> = Q::new(
+            "SELECT user_id FROM memberships WHERE org_id = $1 AND is_active AND access_scope = 'all' AND user_id = ANY($2)",
+        )
+        .bind(org)
+        .bind(members_with(state, org, "access:approve").await?)
+        .scalars(&mut db)
+        .await?;
+        let requester = uuid_of(&r["user_id"]);
+        Ok(deciders
+            .into_iter()
+            .filter(|u| Some(*u) != requester)
+            .map(|user| Event {
+                user,
+                kind: "access_requested",
+                title: format!("Access request: {}", r["inventory"].as_str().unwrap_or("")),
+                body: format!(
+                    "{} asked for access to {}.",
+                    r["requester"].as_str().unwrap_or(""),
+                    r["inventory"].as_str().unwrap_or("")
+                ),
+                asset: None,
+                link: Some("/?page=Approvals".into()),
+                key: format!("access-requested:{request}"),
+            })
+            .collect())
+    }
+    .await;
+    match result {
+        Ok(events) => send_all(state, org, events).await,
+        Err(e) => eprintln!("notify access request: {e:?}"),
+    }
+}
+
+/// Tells the person who asked for access how it was decided.
+pub async fn access_decided(state: &AppState, org: Uuid, request: Uuid) {
+    let result: Result<Vec<Event>> = async {
+        let mut db = state.pool.acquire().await?;
+        let r = Q::new(
+            "SELECT r.user_id, r.status, r.decision_note, i.name AS inventory, d.name AS decider FROM access_requests r
+               JOIN inventories i ON i.id = r.inventory_id LEFT JOIN users d ON d.id = r.decided_by WHERE r.id = $1",
+        )
+        .bind(request)
+        .one(&mut db)
+        .await?;
+        let status = r["status"].as_str().unwrap_or("");
+        let note = r["decision_note"].as_str().map(|n| format!(" Note: {n}")).unwrap_or_default();
+        Ok(vec![Event {
+            user: uuid_of(&r["user_id"]).unwrap(),
+            kind: if status == "approved" { "access_approved" } else { "access_rejected" },
+            title: format!("Access {status}: {}", r["inventory"].as_str().unwrap_or("")),
+            body: format!(
+                "{} {status} your request for access to {}.{note}",
+                r["decider"].as_str().unwrap_or("A manager"),
+                r["inventory"].as_str().unwrap_or("")
+            ),
+            asset: None,
+            link: Some("/?page=Inventories".into()),
+            key: format!("access-decided:{request}"),
+        }])
+    }
+    .await;
+    match result {
+        Ok(events) => send_all(state, org, events).await,
+        Err(e) => eprintln!("notify access decision: {e:?}"),
+    }
+}

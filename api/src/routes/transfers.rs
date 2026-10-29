@@ -78,6 +78,9 @@ pub async fn move_assets(db: &mut Db, user: &User, roots: &[Uuid], m: Move<'_>) 
     .opt(&mut *db)
     .await?
     .ok_or_else(|| AppError::new(400, "Destination inventory not found"))?;
+    if !user.sees_inventory(Some(m.to)) {
+        return Err(AppError::new(400, "Destination inventory not found"));
+    }
     if target["active"] != true {
         return Err(AppError::new(409, "The destination inventory is archived"));
     }
@@ -130,7 +133,8 @@ pub async fn move_assets(db: &mut Db, user: &User, roots: &[Uuid], m: Move<'_>) 
         out.skipped.push(json!({ "assetId": id, "assetTag": tag, "reason": reason }));
     };
     for (id, via) in &plan {
-        let Some(row) = by_id.get(id) else {
+        let row = by_id.get(id).filter(|r| user.sees_inventory(uuid_of(&r["inventoryId"])));
+        let Some(row) = row else {
             if via.is_none() {
                 return Err(AppError::not_found("Asset"));
             }
@@ -331,6 +335,7 @@ pub async fn list(
     let mut db = state.pool.acquire().await?;
     let items = Q::new(format!(
         "{SELECT} WHERE t.org_id = $1 AND ($2::text IS NULL OR t.status = $2)
+            AND ($6::uuid[] IS NULL OR t.to_inventory_id = ANY($6) OR t.from_inventory_id = ANY($6))
             AND ($3::uuid IS NULL OR t.to_inventory_id = $3 OR t.from_inventory_id = $3)
             AND ($4::uuid IS NULL OR t.asset_id = $4) AND ($5::uuid IS NULL OR t.batch_id = $5)
           ORDER BY t.requested_at DESC, a.asset_tag LIMIT {limit}"
@@ -340,6 +345,7 @@ pub async fn list(
     .bind(inventory)
     .bind(asset)
     .bind(batch)
+    .bind(user.scope_param())
     .all(&mut db)
     .await?;
     Ok(Json(json!({ "items": items })))

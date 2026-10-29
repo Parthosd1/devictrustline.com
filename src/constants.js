@@ -5,7 +5,7 @@ export const ATTACHMENT_KINDS = { photo: 'Photo', receipt: 'Receipt', warranty: 
 export const WARRANTY_KINDS = { manufacturer: 'Manufacturer', extended: 'Extended', other: 'Other' };
 export const WARRANTY_STATES = { active: 'Active', expiring_soon: 'Expiring soon', expired: 'Expired', unknown: 'Unknown' };
 export const ASSET_STATUSES = ['Available', 'Deployed', 'Maintenance', 'Retired'];
-export const ROLES = ['admin', 'manager', 'technician', 'auditor', 'viewer'];
+export const ROLES = ['owner', 'admin', 'manager', 'technician', 'auditor', 'viewer'];
 export const ROLE_LABELS = {
-  admin: 'Admin', manager: 'Manager', technician: 'Technician', auditor: 'Auditor', viewer: 'Viewer',
+  owner: 'Owner', admin: 'Admin', manager: 'Manager', technician: 'Technician', auditor: 'Auditor', viewer: 'Viewer',
 };
