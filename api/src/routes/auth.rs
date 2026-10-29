@@ -54,7 +54,7 @@ pub async fn start_session(
 
 /// Creates a workspace with `user_id` as its owner, plus its starting categories and reminder rules.
 pub async fn create_workspace(db: &mut Db, user_id: Uuid, name: &str, kind: &str) -> Result<Uuid> {
-    let plan = if kind == "personal" { "personal_basic" } else { "business" };
+    let plan = if kind == "personal" { "free_personal" } else { "business" };
     let org: Uuid = Q::new("INSERT INTO organizations (name, kind, plan) VALUES ($1, $2, $3) RETURNING id")
         .bind(name)
         .bind(kind)

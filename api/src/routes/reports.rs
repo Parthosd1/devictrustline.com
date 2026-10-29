@@ -10,6 +10,7 @@ use crate::AppState;
 pub async fn summary(State(state): State<AppState>, user: User) -> Result<Json<Value>> {
     user.require("assets:read")?;
     let mut db = state.pool.acquire().await?;
+    crate::routes::plans::require_feature(&mut db, user.org_id, "reports").await?;
     let org = user.org_id;
     let q = |sql: &str| Q::new(sql.to_string()).bind(org);
     let by_status = q("SELECT status AS key, count(*)::int AS count FROM assets WHERE org_id = $1 GROUP BY status ORDER BY count DESC")

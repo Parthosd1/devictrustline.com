@@ -17,17 +17,17 @@ async function personal() {
 test('plans: limits are enforced on the server and the operator can change them', async () => {
   const { agent, user } = await personal();
   const plan = (await agent.get('/api/plan')).body;
-  assert.equal(plan.plan.code, 'personal_basic');
+  assert.equal(plan.plan.code, 'free_personal');
   assert.equal(plan.billing.configured, false);
-  assert.ok(plan.plans.every((p) => p.code.startsWith('personal')));
+  assert.deepEqual(plan.plans.map((p) => p.code), ['free_personal', 'personal_pro']);
 
-  await pool.query(`UPDATE plan_definitions SET limits = limits || '{"items": 2, "members": 1}' WHERE code = 'personal_basic'`);
+  await pool.query(`UPDATE plan_definitions SET limits = limits || '{"items": 2, "members": 1}' WHERE code = 'free_personal'`);
   try {
     await agent.post('/api/assets').send({ name: 'One', type: 'Other' }).expect(201);
     await agent.post('/api/assets').send({ name: 'Two', type: 'Other' }).expect(201);
     const over = await agent.post('/api/assets').send({ name: 'Three', type: 'Other' }).expect(402);
     assert.equal(over.body.code, 'plan_limit');
-    assert.match(over.body.error, /Personal Basic plan includes up to 2 items/);
+    assert.match(over.body.error, /Free Personal plan includes up to 2 items/);
     const csv = await agent.post('/api/assets/import').send({ rows: [{ name: 'X', type: 'Other' }], dryRun: false });
     assert.equal(csv.status, 402);
     await agent.post('/api/users').send({ name: 'B', email: `b${Date.now()}@example.com`, role: 'viewer', password: PASSWORD }).expect(402);
@@ -37,14 +37,14 @@ test('plans: limits are enforced on the server and the operator can change them'
     await agent.post('/api/assets').send({ name: 'Three', type: 'Other' }).expect(201);
     assert.equal((await agent.get('/api/plan')).body.usage.items, 2);
   } finally {
-    await pool.query(`UPDATE plan_definitions SET limits = limits || '{"items": 100, "members": 2}' WHERE code = 'personal_basic'`);
+    await pool.query(`UPDATE plan_definitions SET limits = limits || '{"items": 100, "members": 2}' WHERE code = 'free_personal'`);
   }
   assert.equal(user.organization.kind, 'personal');
 });
 
 test('checkout explains that payment is not set up instead of pretending', async () => {
   const { agent } = await personal();
-  const res = await agent.post('/api/billing/checkout').send({ plan: 'personal_plus' }).expect(503);
+  const res = await agent.post('/api/billing/checkout').send({ plan: 'personal_pro' }).expect(503);
   assert.equal(res.body.code, 'billing_unconfigured');
 });
 
@@ -162,12 +162,12 @@ test('linking, ignoring, pausing and revoking', async () => {
 
 test('paired computers count toward the plan', async () => {
   const { agent } = await personal();
-  await pool.query(`UPDATE plan_definitions SET limits = limits || '{"devices": 1}' WHERE code = 'personal_basic'`);
+  await pool.query(`UPDATE plan_definitions SET limits = limits || '{"devices": 1}' WHERE code = 'free_personal'`);
   try {
     await pairedAgent(agent);
     await agent.post('/api/agents/pairing-codes').expect(402);
   } finally {
-    await pool.query(`UPDATE plan_definitions SET limits = limits || '{"devices": 2}' WHERE code = 'personal_basic'`);
+    await pool.query(`UPDATE plan_definitions SET limits = limits || '{"devices": 2}' WHERE code = 'free_personal'`);
   }
 });
 

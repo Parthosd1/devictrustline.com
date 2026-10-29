@@ -195,6 +195,14 @@ const SETTINGS_SELECT: &str = r#"
 
 async fn settings_of(db: &mut crate::db::Db, state: &AppState, user: &User) -> Result<Value> {
     let mut row = Q::new(SETTINGS_SELECT).bind(user.id).bind(user.org_id).one(db).await?;
+    let plan_sms: bool = Q::new(
+        "SELECT COALESCE((p.features->>'sms')::boolean, false) FROM organizations o
+           JOIN plan_definitions p ON p.code = o.plan WHERE o.id = $1",
+    )
+    .bind(user.org_id)
+    .scalar(&mut *db)
+    .await?;
+    row["planIncludesSms"] = json!(plan_sms);
     // What this server can actually deliver, so the app never offers a channel that cannot work.
     row["available"] = json!({
         "email": state.config.mail.available(),
@@ -311,6 +319,9 @@ pub async fn update_settings(State(state): State<AppState>, user: User, Body(bod
             "phone",
             "Add a phone number to get text messages",
         )]));
+    }
+    if sms == Some(true) {
+        crate::routes::plans::require_feature(&mut tx, user.org_id, "sms").await?;
     }
     let out = settings_of(&mut tx, &state, &user).await?;
     tx.commit().await?;
