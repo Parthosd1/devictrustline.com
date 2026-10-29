@@ -58,4 +58,4 @@ Production deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). API: [api/READM
 - Only real serial numbers are recorded; devices are never merged on model name alone; nothing is added to the inventory without review
 
 **Plans**
-- Personal Basic, Personal Plus and Business limits (items, members, storage, paired computers), enforced by the API; no payment provider is connected yet
+- Free Personal, Personal Pro, Business and Enterprise. Limits (items, members, storage, paired computers, inventories, active reminders) and features (text messages, reports) are enforced by the API. No payment provider is connected yet; the operator changes plans

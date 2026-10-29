@@ -39,7 +39,8 @@ Each phase is stacked on the previous one.
 | 5 | `phase-5-audits` | #16 → phase 4 | backend complete, tested |
 | 6 | `phase-6-approvals` | #17 → phase 5 | backend complete, tested |
 | 7 | `phase-7-notifications` | #18 → phase 6 | backend complete, tested |
-| 8 | `phase-8-ui` | (opening) → phase 7 | web pages complete, checked in a browser |
+| 8 | `phase-8-ui` | #19 → phase 7 | web pages complete, checked in a browser |
+| 9 | `phase-9-plans` | (opening) → phase 8 | complete, tested |
 
 ## Phase 1 — what was built
 
@@ -183,6 +184,23 @@ Each phase is stacked on the previous one.
   same setting as the new Email channel and was removed from the account panel.
 - Responsive: the phone sidebar scrolls, tabs scroll sideways, forms never overflow at 390px.
 
+## Phase 9 — what was built
+
+- Migration 017: plans Free Personal (`free_personal`), Personal Pro (`personal_pro`), Business,
+  Enterprise. Free Personal and Personal Pro replace Personal Basic and Plus, carrying over any
+  limits the operator set; workspaces move with them. New limits: `inventories`, `reminders`
+  (active, per workspace). New `features`: `sms`, `reports`.
+- Defaults: Free Personal 100 items, 2 members, 2 computers, 500 MB, 50 reminders, no text
+  messages. Personal Pro 2,000 items, 6 members, 10 computers, 10 GB, text messages. Business
+  unlimited items, 100 members, 500 computers, 100 GB, 100 inventories, text messages, reports.
+  Enterprise no limits. These are starting values the operator can change with
+  `set-plan-limit` / `set-plan-feature`; prices are not stored and belong to the billing provider.
+- Enforcement on the server: creating inventories and reminders (402 `plan_limit`), turning on
+  text messages and reading reports (402 `plan_feature`); text messages also stop being sent when a
+  workspace moves to a plan without them, and the delivery log says why.
+- Billing stays a boundary: `/api/billing/checkout` answers 503 `billing_unconfigured`.
+- Plan page lists limits and features per plan; Settings explains when text messages are not in the plan.
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -220,8 +238,10 @@ manager at 390px approves the audit from the Approval Center and opens every pag
 errors, no failed API calls, no horizontal overflow on any page at 390px. (The walk-through becomes
 a committed end-to-end test in Phase 11.)
 
+Phase 9 (2026-10-29): fmt, clippy, 16 unit tests, 128/128 HTTP tests (3 new in
+`plan-tiers.test.js`; plans, notification-settings and SMS tests updated for the new plan codes).
+
 ## Next action
 
-Phase 9: plans (Free Personal, Personal Pro, Business, Enterprise) with server-side limits for
-items, members, inventories, notification channels and reports; billing reported as unconfigured;
-branch `phase-9-plans` on phase 8.
+Phase 10: Windows companion reads CPU, RAM, storage, OS version and built-in network adapters;
+Devices page shows them; physical Windows testing remains; branch `phase-10-companion` on phase 9.

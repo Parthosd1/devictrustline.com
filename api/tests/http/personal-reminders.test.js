@@ -240,7 +240,9 @@ function pushService(browser, auth) {
 }
 
 test('browser push and text messages are delivered, logged and retried', async () => {
-  const { agent } = await newPersonal();
+  const { agent, user } = await newPersonal();
+  // Text messages are part of Personal Pro, not Free Personal.
+  await pool.query("UPDATE organizations SET plan = 'personal_pro' WHERE id = $1", [user.organization.id]);
   const browser = crypto.createECDH('prime256v1');
   browser.generateKeys();
   const auth = crypto.randomBytes(16);

@@ -119,7 +119,7 @@ export function NotificationSettings() {
             : s.push && s.pushSubscriptions > 0 ? <button className="outline" onClick={disablePush}><BellOff size={15} /> Turn off</button>
               : <button className="outline" disabled={!s.enabled} onClick={enablePush}>Turn on for this browser</button>}
         </div>
-        <label className="check"><input type="checkbox" checked={s.sms} disabled={!s.enabled || !s.available.sms || !s.phone} onChange={(e) => patch({ sms: e.target.checked })} /> Text messages {!s.available.sms ? <span className="muted">(not set up on this server yet)</span> : !s.phone && <span className="muted">(add a phone number first)</span>}</label>
+        <label className="check"><input type="checkbox" checked={s.sms} disabled={!s.enabled || !s.available.sms || !s.phone || !s.planIncludesSms} onChange={(e) => patch({ sms: e.target.checked })} /> Text messages {!s.planIncludesSms ? <span className="muted">(not part of this workspace’s plan)</span> : !s.available.sms ? <span className="muted">(not set up on this server yet)</span> : !s.phone && <span className="muted">(add a phone number first)</span>}</label>
         <form className="form-grid" onSubmit={(e) => {
           e.preventDefault();
           patch({

@@ -29,8 +29,9 @@ The Vite dev server proxies `/api` to `http://localhost:4000`.
 | `devicetrustline seed` | Creates a demo workspace from `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` |
 | `devicetrustline run-scheduled-audits` | Opens any automatic audits that are due, once, and prints them as JSON |
 | `devicetrustline run-jobs` | Runs one round of background jobs and prints what it did (for cron, or with `DISABLE_SCHEDULER=true`) |
-| `devicetrustline plans` | Lists plans and their limits |
-| `devicetrustline set-plan-limit PLAN LIMIT VALUE` | Changes a plan limit (`items`, `members`, `storageMb`, `devices`; `none` removes it) |
+| `devicetrustline plans` | Lists plans (`free_personal`, `personal_pro`, `business`, `enterprise`) with their limits and features |
+| `devicetrustline set-plan-limit PLAN LIMIT VALUE` | Changes a plan limit (`items`, `members`, `storageMb`, `devices`, `inventories`, `reminders`; `none` removes it) |
+| `devicetrustline set-plan-feature PLAN FEATURE on\|off` | Turns a plan feature on or off (`sms`, `reports`) |
 | `devicetrustline set-workspace-plan ADMIN_EMAIL PLAN` | Moves the workspaces this person administers (of the plan's kind) to that plan |
 | `devicetrustline healthcheck` | Exits 0 when the local server answers `/api/health` (used by the Docker health check) |
 

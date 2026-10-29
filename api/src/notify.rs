@@ -155,6 +155,7 @@ pub async fn send(db: &mut Db, config: &Config, n: Notice<'_>) -> Result<Option<
         "SELECT u.email::text AS email, u.email_notifications AS email_on, u.is_active,
                 COALESCE(s.enabled, true) AS enabled, COALESCE(s.push, false) AS push, COALESCE(s.sms, false) AS sms,
                 s.phone, o.name AS workspace,
+                COALESCE((SELECT (pd.features->>'sms')::boolean FROM plan_definitions pd WHERE pd.code = o.plan), false) AS plan_sms,
                 quiet_hours_end(COALESCE(s.timezone, o.timezone), s.quiet_start, s.quiet_end, now()) AS send_at
            FROM users u JOIN organizations o ON o.id = $2
            LEFT JOIN notification_settings s ON s.user_id = u.id
@@ -261,7 +262,10 @@ pub async fn send(db: &mut Db, config: &Config, n: Notice<'_>) -> Result<Option<
     }
 
     if allowed.sms && p["sms"] == true {
-        if !config.sms.available() {
+        if p["plan_sms"] != true {
+            log(db, id, n.user_id, "sms", "unavailable", Some("The workspace's plan does not include text messages"))
+                .await?;
+        } else if !config.sms.available() {
             log(db, id, n.user_id, "sms", "unavailable", Some("Text messages are not set up on this server")).await?;
         } else if p["phone"].is_null() {
             log(db, id, n.user_id, "sms", "unavailable", Some("No phone number in notification settings")).await?;
