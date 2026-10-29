@@ -36,7 +36,8 @@ Each phase is stacked on the previous one.
 | 2 | `phase-2-inventories` | #13 → phase 1 | backend complete, tested |
 | 3 | `phase-3-delegated-access` | #14 → phase 2 | backend complete, tested |
 | 4 | `phase-4-loaners` | #15 → phase 3 | backend complete, tested |
-| 5 | `phase-5-audits` | (opening) → phase 4 | backend complete, tested |
+| 5 | `phase-5-audits` | #16 → phase 4 | backend complete, tested |
+| 6 | `phase-6-approvals` | (opening) → phase 5 | backend complete, tested |
 
 ## Phase 1 — what was built
 
@@ -132,6 +133,21 @@ Each phase is stacked on the previous one.
 - Automatic audits: quarterly and annual as well as weekly and monthly (`autoAudits` settings).
 - Limited-access users audit only inside their inventories (Phase 3 had closed audits to them).
 
+## Phase 6 — what was built
+
+- `GET /api/approvals`: one queue with sections for pending transfers, submitted audits (with
+  `canReview`, false for one's own), access requests, overdue loans, loans awaiting inspection,
+  items still missing after their latest finished audit, discrepancies (misplaced / unexpected,
+  90 days), damaged items (audits and loan returns, 90 days), warranties ending within 30 days (or
+  ended in the last 7), and maintenance due within 7 days; plus counts and open follow-up tasks.
+  Each section appears only with the permission to act on it, filtered to the person's access.
+  Decisions still go through each area's routes, so there is one rule per action.
+- Migration 015 `follow_up_tasks`: title, kind, source (audit / transfer / loan / work order /
+  warranty / access request), item, assignee, due date, open / done / cancelled with resolution;
+  one open task per source and item. Managers create and edit; the assignee may close their own
+  (done needs a resolution); the assignee is notified. Queue rows show `hasTask`.
+- Permissions: `tasks:read` (all roles), `tasks:manage` (admin, manager).
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -155,8 +171,11 @@ Phase 5 (2026-10-29): fmt, clippy, 16 unit tests, 118/118 HTTP tests (5 new in
 `audit-workflow.test.js`; `audits.test.js` and `reports-import.test.js` updated for the new summary
 counters and settings).
 
+Phase 6 (2026-10-29): fmt, clippy, 16 unit tests, 121/121 HTTP tests (3 new in
+`approval-center.test.js`).
+
 ## Next action
 
-Phase 6: manager approval center (one queue for audits, transfers, overdue loans, missing / damaged
-items, warranties, maintenance, access requests, discrepancies; follow-up tasks); branch
-`phase-6-approvals` on phase 5.
+Phase 7: business notifications (event notices for audits, transfers, loans, missing items,
+assignment, return, invitation; workspace defaults and per-user overrides; scoped); branch
+`phase-7-notifications` on phase 6.

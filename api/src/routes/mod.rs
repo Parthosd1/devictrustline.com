@@ -1,5 +1,6 @@
 pub mod access_requests;
 pub mod agents;
+pub mod approvals;
 pub mod assets;
 pub mod attachments;
 pub mod audits;
@@ -133,6 +134,9 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/transfers/{id}/approve", post(transfers::approve))
         .route("/api/transfers/{id}/reject", post(transfers::reject))
         .route("/api/transfers/{id}/cancel", post(transfers::cancel))
+        .route("/api/approvals", get(approvals::queue))
+        .route("/api/tasks", get(approvals::list_tasks).post(approvals::create_task))
+        .route("/api/tasks/{id}", patch(approvals::update_task))
         .route("/api/loans", get(loans::list).post(loans::create))
         .route("/api/loans/export", get(loans::export))
         .route("/api/loans/{id}", get(loans::get))

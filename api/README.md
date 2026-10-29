@@ -117,6 +117,9 @@ They started as the black-box tests the earlier Node API passed and now cover re
 | POST | `/api/loans` `{assetId \| code, personId, dueOn, startsOn?, purpose?, deployNow?, acknowledgedName?}`, `/api/loans/:id/deploy` `{acknowledgedName?, condition?, note?}`, `/extend` `{dueOn, reason}`, `/return` `{condition?, damaged?, note?}`, `/inspect` `{result: ready\|repair, note?}`, `/cancel` `{reason?}` | `loans:manage` |
 | POST | `/api/loans/:id/lost` `{note}`; extending a loan a second time | `loans:resolve` |
 
+| GET | `/api/approvals` (sections the person may act on, with counts) | signed in |
+| GET, POST, PATCH | `/api/tasks?status=&mine=&assetId=`, `/api/tasks` `{title, kind?, notes?, assetId?, sourceType?, sourceId?, assigneeId?, dueOn?}`, `/api/tasks/:id` (assignee may close their own) | `tasks:read` / `tasks:manage` |
+
 People whose access is limited to some inventories (`accessScope: 'inventories'`) reach only items, transfers, work orders and inventories inside the granted inventories and their sub-inventories; anything else answers 404. Reports, insights, devices, audits and import are closed to them; catalog, sites, people and settings are read-only.
 
 With `autoAudits` on, the API starts an organization-wide audit at the start of each week (Monday) or month, checked every 15 minutes. Set `DISABLE_SCHEDULER=true` to turn the scheduler off on extra instances; it is also safe to run on several instances at once.
