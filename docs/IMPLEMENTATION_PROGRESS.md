@@ -41,7 +41,8 @@ Each phase is stacked on the previous one.
 | 7 | `phase-7-notifications` | #18 → phase 6 | backend complete, tested |
 | 8 | `phase-8-ui` | #19 → phase 7 | web pages complete, checked in a browser |
 | 9 | `phase-9-plans` | #20 → phase 8 | complete, tested |
-| 10 | `phase-10-companion` | (opening) → phase 9 | code complete; ⛔ physical Windows test |
+| 10 | `phase-10-companion` | #21 → phase 9 | code complete; ⛔ physical Windows test |
+| 11 | `phase-11-launch` | #22 → phase 10 | critical workflow tests, browser e2e in CI, launch docs |
 
 ## Phase 1 — what was built
 
@@ -215,6 +216,17 @@ Each phase is stacked on the previous one.
   report shaped like the Windows parser output).
 - ⛔ Not run on a physical Windows PC; `agent/README.md` lists the checks to do on one.
 
+## Phase 11 — what was built
+
+- `api/tests/http/critical-workflows.test.js`: one test per critical workflow (1–14) from the spec,
+  in one shared workspace with an owner, manager, technician and auditor.
+- `e2e/`: a Playwright walk-through of the real web app (owner at 1366px, manager at 390px) on a
+  freshly seeded database, run by the new CI `e2e` job; screenshots are uploaded on failure.
+- Rate limiter unit tests; spot audits now require an inventory in the start form (found by the
+  walk-through).
+- `api/.env.example` lists every variable; `docs/SECURITY_REVIEW.md`, `docs/LAUNCH_CHECKLIST.md`
+  and `docs/FINAL_REPORT.md`.
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -259,8 +271,11 @@ Phase 10 (2026-10-29): agent fmt, clippy and 6 unit tests (Windows parser with a
 sample including the new classes; Linux parser with a fake procfs / sysfs tree). The Windows
 executable is built by CI (`x86_64-pc-windows-gnu`); it has not been run on Windows.
 
+Phase 11 (2026-10-29): fmt, clippy, 18 unit tests, 142/142 HTTP tests (14 new in
+`critical-workflows.test.js`, all pass); browser walk-through (`e2e/run.sh`) passes.
+
 ## Next action
 
-Phase 11: tests for the 14 critical workflows, browser end-to-end test, Docker and CI check,
-`.env.example`, security review, launch checklist and final report; branch `phase-11-launch` on
-phase 10.
+All 11 phases are code complete. Remaining work needs the owner: review and merge #12 → #22, then
+`docs/LAUNCH_CHECKLIST.md` (hosting, DNS, SMTP, optional Google / VAPID / Twilio, physical Windows
+test, payments when chosen).

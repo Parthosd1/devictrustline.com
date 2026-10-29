@@ -264,3 +264,28 @@ pub fn web_app(dir: &str) -> axum::Router<AppState> {
     };
     axum::Router::new().route("/assets/{*path}", get(serve_assets)).fallback(get(serve_app))
 }
+
+#[cfg(test)]
+mod rate_limit_tests {
+    use super::*;
+
+    #[test]
+    fn sign_in_attempts_are_limited_per_address() {
+        let limiter = RateLimiter::new(3, Duration::from_secs(900));
+        let allowed: Vec<bool> = (0..4).map(|_| limiter.hit("203.0.113.7").0).collect();
+        assert_eq!(allowed, [true, true, true, false]);
+        assert!(limiter.hit("198.51.100.2").0, "another address has its own allowance");
+        let (_, remaining, reset) = limiter.hit("203.0.113.7");
+        assert_eq!(remaining, 0);
+        assert!(reset <= 900);
+    }
+
+    #[test]
+    fn the_window_resets() {
+        let limiter = RateLimiter::new(1, Duration::from_millis(20));
+        assert!(limiter.hit("a").0);
+        assert!(!limiter.hit("a").0);
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(limiter.hit("a").0);
+    }
+}
