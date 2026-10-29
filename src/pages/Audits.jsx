@@ -331,7 +331,7 @@ export function Audits({ buildings, onSelect, onChanged }) {
         </div>
       )}
       {showStart && (
-        <StartAudit period={period} buildings={buildings} onCancel={openRuns.length ? () => setStarting(false) : null}
+        <StartAudit key={period} period={period} buildings={buildings} onCancel={openRuns.length ? () => setStarting(false) : null}
           onStarted={(run) => { setStarting(false); setSelected(run.id); load(); onChanged(); }} />
       )}
       {runs && openRuns.length === 0 && !can('audits:perform') && (
