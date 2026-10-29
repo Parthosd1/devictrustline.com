@@ -66,11 +66,11 @@ function StartAudit({ period, buildings, onStarted, onCancel }) {
         <select value={form.auditType} onChange={set('auditType')} aria-label="Audit type">
           {Object.entries(AUDIT_TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
-        <select value={form.inventoryId} onChange={set('inventoryId')} aria-label="Inventory to audit">
-          <option value="">{form.auditType === 'return' ? 'Returned equipment (default)' : 'By place instead of inventory'}</option>
+        <select value={form.inventoryId} onChange={set('inventoryId')} aria-label="Inventory to audit" required={form.auditType === 'spot'}>
+          <option value="">{form.auditType === 'return' ? 'Returned equipment (default)' : form.auditType === 'spot' ? 'Choose the inventory to spot-check' : 'By place instead of inventory'}</option>
           <InventoryOptions list={inventories} />
         </select>
-        {!form.inventoryId && form.auditType !== 'return' && <>
+        {!form.inventoryId && !['return', 'spot'].includes(form.auditType) && <>
           <select value={form.buildingId} onChange={(e) => setForm({ ...form, buildingId: e.target.value, locationId: '' })} aria-label="Building to audit">
             <option value="">All buildings</option>
             {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}

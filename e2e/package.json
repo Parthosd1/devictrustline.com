@@ -1,0 +1,9 @@
+{
+  "name": "devicetrustline-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser walk-through of the main workflows against a real API and database. Run with ./run.sh.",
+  "dependencies": {
+    "playwright": "1.63.0"
+  }
+}

@@ -111,6 +111,48 @@ jobs:
           name: devicetrustline-agent-windows-x64
           path: agent/target/x86_64-pc-windows-gnu/release/devicetrustline-agent.exe
 
+  # Browser walk-through of the main workflows (e2e/walkthrough.mjs) against the real API.
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/devicetrustline_e2e
+      PGPASSWORD: postgres
+      SHOTS_DIR: ${{ github.workspace }}/e2e-screenshots
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            e2e/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - run: mkdir -p "$SHOTS_DIR" && ./e2e/run.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: e2e-screenshots
+
   docker:
     runs-on: ubuntu-latest
     steps:
