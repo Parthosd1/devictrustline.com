@@ -67,6 +67,9 @@ pub async fn create_workspace(db: &mut Db, user_id: Uuid, name: &str, kind: &str
         .run(&mut *db)
         .await?;
     crate::routes::catalog::seed_workspace(db, org, kind).await?;
+    if kind == "business" {
+        Q::new("SELECT seed_inventories($1)").bind(org).run(&mut *db).await?;
+    }
     Ok(org)
 }
 

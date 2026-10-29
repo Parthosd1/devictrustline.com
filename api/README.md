@@ -102,6 +102,11 @@ They started as the black-box tests the earlier Node API passed and now cover re
 | GET, PATCH | `/api/notification-settings` `{enabled, email, push, sms, phone, timezone, quietStart, quietEnd, sendHour, defaultOffsets}` | signed in |
 | POST | `/api/notification-settings/test`; `/api/push/subscriptions` (a browser's PushSubscription); DELETE `/api/push/subscriptions` `{endpoint?}` | signed in |
 | DELETE | `/api/notifications/:id` | own notification |
+| GET | `/api/inventories?archived=`, `/api/inventories/:id` (with sub-inventories and counts by status) | `inventory:read` |
+| POST, PATCH | `/api/inventories` `{name, kind?, parentId?, description?, buildingId?, locationId?, custodianId?, requiresApproval?}`, `/api/inventories/:id`, `/api/inventories/:id/archive`, `/api/inventories/:id/restore` | `inventory:manage` |
+| GET | `/api/transfers?status=&inventoryId=&assetId=&batchId=`, `/api/transfers/:id`; `/api/assets?inventoryId=<id\|none>&includeSub=true` | `inventory:read` |
+| POST | `/api/transfers` `{assetIds \| codes, toInventoryId, fromInventoryId?, reason?, includeComponents?}`, `/api/transfers/:id/cancel` (requester or approver) | `inventory:transfer` |
+| POST | `/api/transfers/:id/approve` `{note?}`, `/api/transfers/:id/reject` `{reason}` | `transfers:approve` |
 
 With `autoAudits` on, the API starts an organization-wide audit at the start of each week (Monday) or month, checked every 15 minutes. Set `DISABLE_SCHEDULER=true` to turn the scheduler off on extra instances; it is also safe to run on several instances at once.
 

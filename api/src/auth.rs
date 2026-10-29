@@ -34,6 +34,10 @@ const GRANTS: &[(&str, &[&str])] = &[
     ("settings:manage", &["admin"]),
     ("catalog:manage", &["admin", "manager"]),
     ("devices:manage", &["admin", "manager"]),
+    ("inventory:read", &["admin", "manager", "technician", "auditor", "viewer"]),
+    ("inventory:manage", &["admin", "manager"]),
+    ("inventory:transfer", &["admin", "manager", "technician"]),
+    ("transfers:approve", &["admin", "manager"]),
 ];
 
 pub fn can(role: &str, permission: &str) -> bool {
@@ -253,7 +257,10 @@ mod tests {
         assert!(can("auditor", "audits:perform"));
         assert!(!can("manager", "users:manage"));
         assert!(!can("nobody", "assets:read"));
-        assert_eq!(permissions_for("viewer"), ["assets:read", "sites:read", "audits:read", "maintenance:read"]);
+        assert_eq!(
+            permissions_for("viewer"),
+            ["assets:read", "sites:read", "audits:read", "maintenance:read", "inventory:read"]
+        );
     }
 
     #[test]

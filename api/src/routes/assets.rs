@@ -60,6 +60,8 @@ pub const SELECT_TEMPLATE: &str = r#"
                     WHERE x.asset_id = a.id), '[]') AS tags,
          (SELECT count(*)::int FROM attachments f WHERE f.asset_id = a.id) AS "attachmentCount",
          (SELECT f.id FROM attachments f WHERE f.asset_id = a.id AND f.kind = 'photo' ORDER BY f.created_at LIMIT 1) AS "photoId",
+         a.inventory_id AS "inventoryId", inv.name AS "inventoryName", inv.custodian_id AS "custodianId",
+         (SELECT name FROM users WHERE id = inv.custodian_id) AS "custodianName",
          a.archived_at AS "archivedAt", a.created_at AS "createdAt", a.updated_at AS "updatedAt"
     FROM assets a
     JOIN organizations o ON o.id = a.org_id
@@ -67,7 +69,8 @@ pub const SELECT_TEMPLATE: &str = r#"
     LEFT JOIN buildings b ON b.id = a.building_id
     LEFT JOIN locations l ON l.id = a.location_id
     LEFT JOIN assets pa ON pa.id = a.parent_asset_id
-    LEFT JOIN people pe ON pe.id = a.assigned_person_id"#;
+    LEFT JOIN people pe ON pe.id = a.assigned_person_id
+    LEFT JOIN inventories inv ON inv.id = a.inventory_id"#;
 
 /// The item columns every asset endpoint returns.
 pub static SELECT: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
@@ -228,7 +231,7 @@ pub async fn record_event(
 }
 
 /// Every asset below this one in the parent-child tree, nearest first. Rows are locked for update.
-async fn descendant_ids(db: &mut Db, org_id: Uuid, id: Uuid) -> Result<Vec<Uuid>> {
+pub async fn descendant_ids(db: &mut Db, org_id: Uuid, id: Uuid) -> Result<Vec<Uuid>> {
     Q::new(
         "WITH RECURSIVE tree AS (
            SELECT id, 1 AS depth FROM assets WHERE org_id = $1 AND parent_asset_id = $2
@@ -289,6 +292,9 @@ async fn search(
     let parent = input.uuid("parentId", true, false);
     let category = input.uuid("categoryId", true, false);
     let owner = input.uuid("ownerId", true, false);
+    // An inventory id, or "none" for items in no inventory; with includeSub=true, its sub-inventories too.
+    let inventory = input.str("inventoryId", Str { trim: false, ..Str::req(1, 36).optional() }).into_option();
+    let include_sub = input.one_of_or("includeSub", &["true", "false"], "false") == "true";
     let archived = input.one_of_or("archived", &["false", "true", "all"], "false");
     let limit = input.int("limit", 1, max_limit, 100.min(max_limit));
     let offset = input.int("offset", 0, i64::MAX, 0);
@@ -342,6 +348,25 @@ async fn search(
         if let Opt::Val(u) = value {
             wheres.push(format!("{column} = ${}", first_uuid + uuid_params.len()));
             uuid_params.push(u);
+        }
+    }
+    match inventory.as_deref() {
+        None => {}
+        Some("none") => wheres.push("a.inventory_id IS NULL".into()),
+        Some(id) => {
+            let Some(id) = crate::validate::parse_uuid(id) else {
+                return Err(AppError::Invalid(vec![crate::validate::Issue::new("inventoryId", "Invalid uuid")]));
+            };
+            let n = first_uuid + uuid_params.len();
+            wheres.push(if include_sub {
+                format!(
+                    "a.inventory_id IN (WITH RECURSIVE t AS (SELECT id, 0 AS d FROM inventories WHERE org_id = $1 AND id = ${n}
+                       UNION ALL SELECT c.id, t.d + 1 FROM inventories c JOIN t ON c.parent_id = t.id WHERE t.d < 20) SELECT id FROM t)"
+                )
+            } else {
+                format!("a.inventory_id = ${n}")
+            });
+            uuid_params.push(id);
         }
     }
     let where_sql = wheres.join(" AND ");
@@ -553,10 +578,23 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     let mut input = Input::body(&body);
     let mut fields = asset_fields(&mut input, false);
     let extra = extras(&mut input);
+    // Where a new item starts. Later moves are transfers, so updates do not take this field.
+    let inventory = input.uuid("inventoryId", true, true).into_option();
     let org = user.org_id;
     let mut tx = state.pool.begin().await?;
     finish_validation(input, &mut tx, org, &mut fields).await?;
     crate::routes::plans::check_limit(&mut tx, org, "items").await?;
+    if let Some(inv) = inventory {
+        let active: i64 =
+            Q::new("SELECT count(*) FROM inventories WHERE org_id = $1 AND id = $2 AND archived_at IS NULL")
+                .bind(org)
+                .bind(inv)
+                .scalar(&mut tx)
+                .await?;
+        if active == 0 {
+            return Err(AppError::new(400, "Inventory not found"));
+        }
+    }
     // The warranty date is stored as the item's manufacturer warranty.
     let warranty = fields.get("warrantyExpires").clone();
     fields.set("warrantyExpires", Opt::Absent);
@@ -617,6 +655,15 @@ pub async fn create(State(state): State<AppState>, user: User, Body(body): Body)
     if let Opt::Val(date) = &warranty {
         crate::routes::warranties::set_primary(&mut tx, org, id, Some(date)).await?;
         changes.insert("warrantyExpires".into(), json!({ "from": null, "to": date }));
+    }
+    if let Some(inv) = inventory {
+        Q::new("UPDATE assets SET inventory_id = $3 WHERE org_id = $1 AND id = $2")
+            .bind(org)
+            .bind(id)
+            .bind(inv)
+            .run(&mut tx)
+            .await?;
+        changes.insert("inventoryId".into(), json!({ "from": null, "to": inv }));
     }
     let created = find_asset(&mut tx, org, id).await?;
     record_event(&mut tx, org, id, user.id, "created", Value::Object(changes)).await?;

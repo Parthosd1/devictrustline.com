@@ -32,7 +32,8 @@ Each phase is stacked on the previous one.
 
 | Phase | Branch | PR | Status |
 |---|---|---|---|
-| 1 | `phase-1-personal-notifications` | (opening) | backend complete, tested |
+| 1 | `phase-1-personal-notifications` | #12 → main | backend complete, tested |
+| 2 | `phase-2-inventories` | (opening) → phase 1 | backend complete, tested |
 
 ## Phase 1 — what was built
 
@@ -50,6 +51,20 @@ Each phase is stacked on the previous one.
 - Routes: reminders CRUD, snooze, complete; notification settings, test send, push subscriptions,
   notification delete and delivery log; item archive / restore and CSV export.
 
+## Phase 2 — what was built
+
+- Migration 011: `inventories` (nested, kinds, place, custodian, approval flag, archive),
+  `assets.inventory_id` (one inventory per item), `inventory_transfers` (pending / completed /
+  rejected / cancelled; one pending per item by unique index; decided rows immutable by trigger),
+  `seed_inventories()` giving every business workspace a Main IT Hub with Available, Loaner,
+  RMA / Repair, Deployment and Returned sub-inventories.
+- Routes: inventories CRUD, archive (only when empty) and restore; transfers by id or scanned code,
+  single or bulk, components move with their parent, optional expected source; approve, reject
+  (reason required), cancel; item list filter by inventory and sub-inventories.
+- `src/events.rs`: approvers are notified of pending transfers; requesters of decisions.
+- Permissions: `inventory:read` (all), `inventory:manage` and `transfers:approve` (admin, manager),
+  `inventory:transfer` (admin, manager, technician).
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -57,7 +72,10 @@ Phase 1 (2026-10-27): `cargo fmt --check`, `cargo clippy -D warnings`, 16 unit t
 pass (7 new in `personal-reminders.test.js`, covering critical workflows 1 and 2, push decrypted by a
 stand-in push service, SMS retry, quiet hours, archive and export).
 
+Phase 2 (2026-10-29): fmt, clippy, 16 unit tests, 101/101 HTTP tests (7 new in
+`inventories.test.js`: workflows 3 (inventory part), 4 and 14 (transfers)).
+
 ## Next action
 
-Phase 2: inventories and sub-inventories, transfers with approval, on branch
-`phase-2-inventories` stacked on phase 1.
+Phase 3: owner role, inventory-scoped access grants enforced on the server, invitations
+carrying grants, on branch `phase-3-delegated-access` stacked on phase 2.
