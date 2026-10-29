@@ -40,6 +40,7 @@ const GRANTS: &[(&str, &[&str])] = &[
     ("inventory:transfer", &["admin", "manager", "technician"]),
     ("transfers:approve", &["admin", "manager"]),
     ("access:approve", &["admin", "manager"]),
+    ("audits:approve", &["admin", "manager"]),
     ("loans:read", &["admin", "manager", "technician", "auditor", "viewer"]),
     ("loans:manage", &["admin", "manager", "technician"]),
     ("loans:resolve", &["admin", "manager"]),

@@ -57,7 +57,7 @@ test('scans record verified, misplaced and unexpected assets; closing marks the 
 
   const closed = (await agent.post(`/api/audits/${run.id}/close`).expect(200)).body;
   assert.equal(closed.status, 'closed');
-  assert.deepEqual(closed.summary, { expected: 2, verified: 1, wrongLocation: 0, missing: 1, pending: 0, unexpected: 1 });
+  assert.deepEqual(closed.summary, { expected: 2, verified: 1, wrongLocation: 0, missing: 1, pending: 0, unexpected: 1, damaged: 0, duplicateScans: 0 });
   const detail = (await agent.get(`/api/audits/${run.id}`).expect(200)).body;
   assert.equal(detail.items.find((i) => i.assetId === assets.s2.id).result, 'missing');
 

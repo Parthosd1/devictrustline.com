@@ -35,7 +35,8 @@ Each phase is stacked on the previous one.
 | 1 | `phase-1-personal-notifications` | #12 → main | backend complete, tested |
 | 2 | `phase-2-inventories` | #13 → phase 1 | backend complete, tested |
 | 3 | `phase-3-delegated-access` | #14 → phase 2 | backend complete, tested |
-| 4 | `phase-4-loaners` | (opening) → phase 3 | backend complete, tested |
+| 4 | `phase-4-loaners` | #15 → phase 3 | backend complete, tested |
+| 5 | `phase-5-audits` | (opening) → phase 4 | backend complete, tested |
 
 ## Phase 1 — what was built
 
@@ -113,6 +114,24 @@ Each phase is stacked on the previous one.
 - CI fix carried from Phase 2: the inventory tree sorts by lowercased names with byte collation, so
   the order no longer depends on the database locale (CI uses en_US, local used C).
 
+## Phase 5 — what was built
+
+- Migration 014: audit types (`soft`, `full`, `spot`, `transfer`, `return`), frequencies (`weekly`,
+  `monthly`, `quarterly`, `annual`, `manual`), audits scoped to an inventory and everything inside
+  it or to chosen items, statuses `draft` → `open` (in progress) → `submitted` → `approved` (locked) |
+  `rejected` → `open`, plus `closed` for audits that need no review; `audit_reviews` (append-only
+  history of started / submitted / approved / rejected / reopened / closed); damaged flag and scan
+  count on items; a database check that the reviewer is neither the starter nor the submitter.
+- Routes: start (type, period, inventory, items, draft, requiresReview), begin, scan (duplicates
+  counted and flagged), mark (damaged needs a note), submit, approve, reject (note required), reopen,
+  close (only without review), CSV export. Defaults: soft and untyped (original) audits close
+  directly; full, spot, transfer and return audits need review. Return audits default to the
+  Returned Equipment inventory.
+- `audits:approve` (admin, manager). Reviewers who can see the audit are notified on submit; the
+  submitter is notified of the decision.
+- Automatic audits: quarterly and annual as well as weekly and monthly (`autoAudits` settings).
+- Limited-access users audit only inside their inventories (Phase 3 had closed audits to them).
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -132,7 +151,12 @@ Phase 4 (2026-10-29): fmt, clippy, 16 unit tests, 113/113 HTTP tests under an en
 `loaners.test.js`: full lifecycle, eligibility, exceptions, overdue notices and reports, scope and
 cross-workspace).
 
+Phase 5 (2026-10-29): fmt, clippy, 16 unit tests, 118/118 HTTP tests (5 new in
+`audit-workflow.test.js`; `audits.test.js` and `reports-import.test.js` updated for the new summary
+counters and settings).
+
 ## Next action
 
-Phase 5: audit types (soft, full hub, spot, transfer, return), frequencies, Draft → In Progress →
-Submitted → Approved / Rejected → Locked, no self-approval; branch `phase-5-audits` on phase 4.
+Phase 6: manager approval center (one queue for audits, transfers, overdue loans, missing / damaged
+items, warranties, maintenance, access requests, discrepancies; follow-up tasks); branch
+`phase-6-approvals` on phase 5.

@@ -90,7 +90,9 @@ They started as the black-box tests the earlier Node API passed and now cover re
 | GET | `/api/people` | `assets:read` |
 | POST, PATCH | `/api/people`, `/api/people/:id` | `people:write` |
 | GET | `/api/audits?period=&status=`, `/api/audits/:id` (with items) | `audits:read` |
-| POST | `/api/audits` `{period, buildingId?, locationId?}`, `/api/audits/:id/scan` `{code, locationId?}`, `/api/audits/:id/close` | `audits:perform` |
+| POST | `/api/audits` `{period?, auditType?: soft\|full\|spot\|transfer\|return, buildingId?, locationId?, inventoryId?, assetIds?, requiresReview?, draft?, name?, dueAt?}`, `/api/audits/:id/begin`, `/scan` `{code, locationId?}`, `/submit` `{note?}`, `/reopen` `{note?}`, `/close` (audits without review) | `audits:perform` |
+| POST | `/api/audits/:id/approve` `{note?}`, `/api/audits/:id/reject` `{note}` (not by whoever started or submitted it) | `audits:approve` |
+| GET | `/api/audits/:id/export` (CSV) | `audits:read` |
 | PATCH | `/api/audits/:id/items/:assetId` `{result, note?}` | `audits:perform` |
 | GET | `/api/work-orders?status=&assetId=&assigneeId=`, `/api/work-orders/:id` (with notes), `/api/work-orders/assignees` | `maintenance:read` |
 | POST, PATCH | `/api/work-orders`, `/api/work-orders/:id`, `/api/work-orders/:id/notes`, `/api/work-orders/:id/resolve`, `/api/work-orders/:id/cancel` | `maintenance:write` |

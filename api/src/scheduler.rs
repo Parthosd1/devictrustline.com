@@ -16,7 +16,7 @@ pub async fn run_scheduled_audits(pool: &PgPool, log: bool) -> Result<Vec<Value>
     let mut db = pool.acquire().await?;
     let orgs = Q::new(
         "SELECT id, settings->'autoAudits' AS auto FROM organizations
-          WHERE settings->'autoAudits'->>'weekly' = 'true' OR settings->'autoAudits'->>'monthly' = 'true'",
+          WHERE settings->'autoAudits' @? '$.* ? (@ == true)'",
     )
     .all(&mut db)
     .await?;
@@ -24,7 +24,7 @@ pub async fn run_scheduled_audits(pool: &PgPool, log: bool) -> Result<Vec<Value>
     let mut started = vec![];
     for org in orgs {
         let org_id = uuid_of(&org["id"]).unwrap();
-        for (period, unit) in [("weekly", "week"), ("monthly", "month")] {
+        for (period, unit) in [("weekly", "week"), ("monthly", "month"), ("quarterly", "quarter"), ("annual", "year")] {
             if org["auto"][period] != true {
                 continue;
             }
@@ -36,7 +36,8 @@ pub async fn run_scheduled_audits(pool: &PgPool, log: bool) -> Result<Vec<Value>
             let existing = Q::new(
                 "SELECT 1 FROM audit_runs
                   WHERE org_id = $1 AND period = $2 AND building_id IS NULL
-                    AND (status = 'open' OR started_at >= date_trunc($3, now()))
+                    AND audit_type = 'full' AND inventory_id IS NULL
+                    AND (status IN ('draft', 'open', 'submitted', 'rejected') OR started_at >= date_trunc($3, now()))
                   LIMIT 1",
             )
             .bind(org_id)
@@ -59,16 +60,7 @@ pub async fn run_scheduled_audits(pool: &PgPool, log: bool) -> Result<Vec<Value>
             .into_iter()
             .next();
             let Some(admin) = admin else { continue };
-            let new = NewAudit {
-                org_id,
-                user_id: admin,
-                period,
-                building_id: None,
-                location_id: None,
-                name: None,
-                due_at: None,
-                scheduled: true,
-            };
+            let new = NewAudit { scheduled: true, ..NewAudit::periodic(org_id, admin, period) };
             let id = start_audit(&mut tx, new).await?;
             tx.commit().await?;
             if log {

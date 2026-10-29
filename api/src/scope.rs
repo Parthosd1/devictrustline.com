@@ -39,6 +39,7 @@ const OBJECTS: &[(&str, &str, &str)] = &[
         "SELECT unnest(ARRAY[t.to_inventory_id, t.from_inventory_id]) FROM inventory_transfers t WHERE t.id = $1 AND t.org_id = $2",
     ),
     ("inventories", "Inventory", "SELECT id FROM inventories WHERE id = $1 AND org_id = $2"),
+    ("audits", "Audit", "SELECT inventory_id FROM audit_runs WHERE id = $1 AND org_id = $2"),
     (
         "loans",
         "Loan",
@@ -47,7 +48,7 @@ const OBJECTS: &[(&str, &str, &str)] = &[
 ];
 
 /// Workspace-wide areas closed to people with limited access (reads and writes).
-const CLOSED: &[&str] = &["reports", "insights", "agents", "discovered-devices", "audits"];
+const CLOSED: &[&str] = &["reports", "insights", "agents", "discovered-devices"];
 /// Workspace-wide areas they may read but not change.
 const READ_ONLY: &[&str] = &["categories", "tags", "custom-fields", "buildings", "locations", "people", "settings"];
 

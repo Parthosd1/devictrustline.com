@@ -230,3 +230,91 @@ pub async fn access_decided(state: &AppState, org: Uuid, request: Uuid) {
         Err(e) => eprintln!("notify access decision: {e:?}"),
     }
 }
+
+/// Tells reviewers (managers and admins who see the audit's inventory) that an audit awaits review.
+pub async fn audit_submitted(state: &AppState, org: Uuid, run: Uuid) {
+    let result: Result<Vec<Event>> = async {
+        let mut db = state.pool.acquire().await?;
+        let r = Q::new(
+            "SELECT r.name, r.started_by, r.submitted_by, r.inventory_id, u.name AS submitter,
+                    (SELECT count(*) FROM audit_items i WHERE i.run_id = r.id AND i.result = 'missing') AS missing
+               FROM audit_runs r LEFT JOIN users u ON u.id = r.submitted_by WHERE r.id = $1",
+        )
+        .bind(run)
+        .one(&mut db)
+        .await?;
+        let reviewers: Vec<Uuid> = Q::new(
+            "SELECT m.user_id FROM memberships m
+              WHERE m.org_id = $1 AND m.is_active AND m.user_id = ANY($2)
+                AND (m.access_scope = 'all' OR ($3::uuid IS NOT NULL AND EXISTS (
+                      WITH RECURSIVE t AS (
+                        SELECT g.inventory_id AS id, 0 AS depth FROM inventory_grants g WHERE g.org_id = m.org_id AND g.user_id = m.user_id
+                        UNION SELECT c.id, t.depth + 1 FROM inventories c JOIN t ON c.parent_id = t.id WHERE t.depth < 20)
+                      SELECT 1 FROM t WHERE t.id = $3)))",
+        )
+        .bind(org)
+        .bind(members_with(state, org, "audits:approve").await?)
+        .bind(uuid_of(&r["inventory_id"]))
+        .scalars(&mut db)
+        .await?;
+        let authors = [uuid_of(&r["started_by"]), uuid_of(&r["submitted_by"])];
+        Ok(reviewers
+            .into_iter()
+            .filter(|u| !authors.contains(&Some(*u)))
+            .map(|user| Event {
+                user,
+                kind: "audit_submitted",
+                title: format!("Audit to review: {}", r["name"].as_str().unwrap_or("")),
+                body: format!(
+                    "{} submitted {} ({} missing).",
+                    r["submitter"].as_str().unwrap_or(""),
+                    r["name"].as_str().unwrap_or(""),
+                    r["missing"]
+                ),
+                asset: None,
+                link: Some("/?page=Approvals".into()),
+                key: format!("audit-submitted:{run}:{}", chrono::Utc::now().timestamp()),
+            })
+            .collect())
+    }
+    .await;
+    match result {
+        Ok(events) => send_all(state, org, events).await,
+        Err(e) => eprintln!("notify audit submitted: {e:?}"),
+    }
+}
+
+/// Tells whoever submitted an audit how it was reviewed.
+pub async fn audit_decided(state: &AppState, org: Uuid, run: Uuid) {
+    let result: Result<Vec<Event>> = async {
+        let mut db = state.pool.acquire().await?;
+        let r = Q::new(
+            "SELECT r.name, r.status, r.submitted_by, r.started_by, r.review_note, u.name AS reviewer, r.reviewed_at
+               FROM audit_runs r LEFT JOIN users u ON u.id = r.reviewed_by WHERE r.id = $1",
+        )
+        .bind(run)
+        .one(&mut db)
+        .await?;
+        let Some(user) = uuid_of(&r["submitted_by"]).or(uuid_of(&r["started_by"])) else { return Ok(vec![]) };
+        let status = r["status"].as_str().unwrap_or("");
+        let note = r["review_note"].as_str().map(|n| format!(" Note: {n}")).unwrap_or_default();
+        Ok(vec![Event {
+            user,
+            kind: if status == "approved" { "audit_approved" } else { "audit_rejected" },
+            title: format!("Audit {status}: {}", r["name"].as_str().unwrap_or("")),
+            body: format!(
+                "{} {status} {}.{note}",
+                r["reviewer"].as_str().unwrap_or("A manager"),
+                r["name"].as_str().unwrap_or("")
+            ),
+            asset: None,
+            link: Some("/?page=Audits".into()),
+            key: format!("audit-decided:{run}:{}", r["reviewed_at"].as_str().unwrap_or("")),
+        }])
+    }
+    .await;
+    match result {
+        Ok(events) => send_all(state, org, events).await,
+        Err(e) => eprintln!("notify audit decision: {e:?}"),
+    }
+}

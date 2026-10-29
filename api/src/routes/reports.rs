@@ -46,15 +46,15 @@ pub async fn summary(State(state): State<AppState>, user: User) -> Result<Json<V
                    GROUP BY m ORDER BY m")
         .all(&mut db).await?;
     let audits = q(r#"SELECT id, period, name, closed_at AS "closedAt", summary FROM audit_runs
-                       WHERE org_id = $1 AND status = 'closed' ORDER BY closed_at DESC LIMIT 12"#)
+                       WHERE org_id = $1 AND status IN ('closed', 'approved') ORDER BY closed_at DESC LIMIT 12"#)
     .all(&mut db)
     .await?;
     let still_missing = q(r#"SELECT DISTINCT ON (i.asset_id) a.id, a.asset_tag AS "assetTag", a.name, r.name AS audit, r.closed_at AS "closedAt"
                                FROM audit_items i JOIN audit_runs r ON r.id = i.run_id JOIN assets a ON a.id = i.asset_id
-                              WHERE i.org_id = $1 AND r.status = 'closed' AND i.result = 'missing'
+                              WHERE i.org_id = $1 AND r.status IN ('closed', 'approved') AND i.result = 'missing'
                                 AND NOT EXISTS (SELECT 1 FROM audit_items j JOIN audit_runs r2 ON r2.id = j.run_id
                                                  WHERE j.asset_id = i.asset_id AND j.result IN ('verified', 'wrong_location')
-                                                   AND r2.status = 'closed' AND r2.closed_at > r.closed_at)
+                                                   AND r2.status IN ('closed', 'approved') AND r2.closed_at > r.closed_at)
                               ORDER BY i.asset_id, r.closed_at DESC"#)
         .all(&mut db).await?;
     Ok(Json(json!({
