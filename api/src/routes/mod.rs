@@ -6,6 +6,7 @@ pub mod auth;
 pub mod catalog;
 pub mod google;
 pub mod import;
+pub mod inventories;
 pub mod invitations;
 pub mod notifications;
 pub mod people;
@@ -13,6 +14,7 @@ pub mod plans;
 pub mod reports;
 pub mod settings;
 pub mod sites;
+pub mod transfers;
 pub mod user_reminders;
 pub mod users;
 pub mod warranties;
@@ -120,6 +122,15 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/agent/status", get(agents::status))
         .route("/api/agent/report", post(agents::report))
         .route("/api/agent/disconnect", post(agents::disconnect))
+        .route("/api/inventories", get(inventories::list).post(inventories::create))
+        .route("/api/inventories/{id}", get(inventories::get).patch(inventories::update))
+        .route("/api/inventories/{id}/archive", post(inventories::archive))
+        .route("/api/inventories/{id}/restore", post(inventories::restore))
+        .route("/api/transfers", get(transfers::list).post(transfers::create))
+        .route("/api/transfers/{id}", get(transfers::get))
+        .route("/api/transfers/{id}/approve", post(transfers::approve))
+        .route("/api/transfers/{id}/reject", post(transfers::reject))
+        .route("/api/transfers/{id}/cancel", post(transfers::cancel))
         .route("/api/people", get(people::list).post(people::create))
         .route("/api/people/{id}", patch(people::update))
         .route("/api/audits", get(audits::list).post(audits::start))

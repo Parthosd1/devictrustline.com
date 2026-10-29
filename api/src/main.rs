@@ -8,6 +8,7 @@ mod auth;
 mod config;
 mod db;
 mod error;
+mod events;
 mod mail;
 mod notify;
 mod push;
