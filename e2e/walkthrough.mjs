@@ -106,9 +106,14 @@ try {
 
   step('owner runs a full audit, scans an item and submits it');
   await go(page, 'Audits');
-  await page.click('.tabs button:has-text("One-off")');
+  // The tab reloads its audits and then re-mounts the start form, so choose the type only after that.
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/api/audits?') && r.url().includes('period=manual')),
+    page.click('.tabs button:has-text("One-off")'),
+  ]);
   await page.waitForSelector('.start-audit h2:has-text("one-off")');
   await page.selectOption('.start-audit select >> nth=0', 'full');
+  await page.waitForFunction(() => document.querySelector('.start-audit select').value === 'full');
   await page.click('.start-audit button.primary');
   const scan = page.locator('input[aria-label="Audit scan"]');
   await scan.fill('DT-1001');
