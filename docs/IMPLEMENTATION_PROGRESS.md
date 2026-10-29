@@ -40,7 +40,8 @@ Each phase is stacked on the previous one.
 | 6 | `phase-6-approvals` | #17 → phase 5 | backend complete, tested |
 | 7 | `phase-7-notifications` | #18 → phase 6 | backend complete, tested |
 | 8 | `phase-8-ui` | #19 → phase 7 | web pages complete, checked in a browser |
-| 9 | `phase-9-plans` | (opening) → phase 8 | complete, tested |
+| 9 | `phase-9-plans` | #20 → phase 8 | complete, tested |
+| 10 | `phase-10-companion` | (opening) → phase 9 | code complete; ⛔ physical Windows test |
 
 ## Phase 1 — what was built
 
@@ -201,6 +202,19 @@ Each phase is stacked on the previous one.
 - Billing stays a boundary: `/api/billing/checkout` answers 503 `billing_unconfigured`.
 - Plan page lists limits and features per plan; Settings explains when text messages are not in the plan.
 
+## Phase 10 — what was built
+
+- Windows companion: the same single PowerShell call now also reads `Win32_OperatingSystem`,
+  `Win32_Processor`, `Win32_PhysicalMemory` and `Win32_LogicalDisk` (fixed drives), and adapter
+  speed. The computer's report carries `cpu` (name, manufacturer, cores, threads, MHz, sockets),
+  `memory` (total GB and each module), `storage` (disk total, free space, drives), `os` (edition,
+  version, build, architecture) and `network` (built-in adapters with MAC, type and speed).
+  Missing values are left out, never guessed.
+- Linux companion: CPU, memory, disk size and OS from procfs, sysfs and `/etc/os-release`.
+- Devices page and "Add as a new item" show these details for computers (checked in a browser with a
+  report shaped like the Windows parser output).
+- ⛔ Not run on a physical Windows PC; `agent/README.md` lists the checks to do on one.
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -241,7 +255,12 @@ a committed end-to-end test in Phase 11.)
 Phase 9 (2026-10-29): fmt, clippy, 16 unit tests, 128/128 HTTP tests (3 new in
 `plan-tiers.test.js`; plans, notification-settings and SMS tests updated for the new plan codes).
 
+Phase 10 (2026-10-29): agent fmt, clippy and 6 unit tests (Windows parser with a recorded CIM
+sample including the new classes; Linux parser with a fake procfs / sysfs tree). The Windows
+executable is built by CI (`x86_64-pc-windows-gnu`); it has not been run on Windows.
+
 ## Next action
 
-Phase 10: Windows companion reads CPU, RAM, storage, OS version and built-in network adapters;
-Devices page shows them; physical Windows testing remains; branch `phase-10-companion` on phase 9.
+Phase 11: tests for the 14 critical workflows, browser end-to-end test, Docker and CI check,
+`.env.example`, security review, launch checklist and final report; branch `phase-11-launch` on
+phase 10.

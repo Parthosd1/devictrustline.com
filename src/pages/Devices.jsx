@@ -9,6 +9,21 @@ const DOWNLOAD = '/downloads/devicetrustline-agent.exe';
 const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Never');
 
 // Whether this server offers the Windows companion for download (the Docker image includes it).
+// What the companion reported about a computer's own hardware, as short labelled lines.
+export function hardwareLines(details = {}) {
+  const lines = [];
+  const { cpu, memory, storage, os, network } = details;
+  if (cpu?.name || cpu?.cores) lines.push(['Processor', [cpu.name, cpu.cores && `${cpu.cores} cores`, cpu.threads && `${cpu.threads} threads`].filter(Boolean).join(' · ')]);
+  if (memory?.totalGb) lines.push(['Memory', `${memory.totalGb} GB${memory.modules?.length ? ` in ${memory.modules.length} module${memory.modules.length === 1 ? '' : 's'}` : ''}`]);
+  if (storage?.totalGb || storage?.volumes) {
+    lines.push(['Storage', [storage.totalGb && `${storage.totalGb} GB`, storage.freeGb != null && `${storage.freeGb} GB free`,
+      storage.volumes?.map((v) => v.drive).join(' ')].filter(Boolean).join(' · ')]);
+  }
+  if (os?.name) lines.push(['Operating system', [os.name, os.version, os.build && `build ${os.build}`, os.architecture].filter(Boolean).join(' · ')]);
+  if (network?.length) lines.push(['Network', network.map((n) => `${n.name}${n.mac ? ` (${n.mac})` : ''}`).join(', ')]);
+  return lines;
+}
+
 function useDownload() {
   const [available, setAvailable] = useState(false);
   useEffect(() => {
@@ -68,6 +83,7 @@ function AddDialog({ device, onClose, onDone }) {
           <div><dt>Manufacturer</dt><dd>{device.manufacturer || '—'}</dd></div>
           <div><dt>Model</dt><dd>{device.model || '—'}</dd></div>
           <div><dt>Serial</dt><dd>{device.serial || 'Not reported'}</dd></div>
+          {hardwareLines(device.details).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
         </dl>
         <div className="modal-actions">
           <button type="button" className="outline" onClick={onClose}>Cancel</button>
@@ -181,7 +197,11 @@ export function Devices({ onSelect, onChanged }) {
               {devices?.length === 0 && <tr><td colSpan="5" className="empty">Nothing here.</td></tr>}
               {devices?.map((d) => (
                 <tr key={d.id}>
-                  <td><strong className="normal">{d.name}</strong><small>{d.class}{d.manufacturer ? ` · ${d.manufacturer}` : ''}{d.model && d.model !== d.name ? ` · ${d.model}` : ''}</small></td>
+                  <td>
+                    <strong className="normal">{d.name}</strong>
+                    <small>{d.class}{d.manufacturer ? ` · ${d.manufacturer}` : ''}{d.model && d.model !== d.name ? ` · ${d.model}` : ''}</small>
+                    {d.class === 'computer' && hardwareLines(d.details).map(([k, v]) => <small key={k}>{k}: {v}</small>)}
+                  </td>
                   <td className="mono">{d.serial || <span className="muted">Not reported</span>}</td>
                   <td>{d.agentName}</td>
                   <td>{d.missingSince ? <span className="status missing"><i />Not seen since {new Date(d.missingSince).toLocaleDateString()}</span> : when(d.lastSeenAt)}</td>
