@@ -103,6 +103,10 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/notifications/{id}", axum::routing::delete(notifications::delete))
         .route("/api/notification-settings", get(notifications::get_settings).patch(notifications::update_settings))
         .route("/api/notification-settings/test", post(notifications::send_test))
+        .route(
+            "/api/notification-settings/events",
+            get(notifications::get_event_preferences).put(notifications::update_event_preferences),
+        )
         .route("/api/push/subscriptions", post(notifications::subscribe_push).delete(notifications::unsubscribe_push))
         .route("/api/reminders", get(user_reminders::list).post(user_reminders::create))
         .route(

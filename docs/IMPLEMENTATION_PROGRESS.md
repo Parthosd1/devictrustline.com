@@ -37,7 +37,8 @@ Each phase is stacked on the previous one.
 | 3 | `phase-3-delegated-access` | #14 → phase 2 | backend complete, tested |
 | 4 | `phase-4-loaners` | #15 → phase 3 | backend complete, tested |
 | 5 | `phase-5-audits` | #16 → phase 4 | backend complete, tested |
-| 6 | `phase-6-approvals` | (opening) → phase 5 | backend complete, tested |
+| 6 | `phase-6-approvals` | #17 → phase 5 | backend complete, tested |
+| 7 | `phase-7-notifications` | (opening) → phase 6 | backend complete, tested |
 
 ## Phase 1 — what was built
 
@@ -148,6 +149,20 @@ Each phase is stacked on the previous one.
   (done needs a resolution); the assignee is notified. Queue rows show `hasTask`.
 - Permissions: `tasks:read` (all roles), `tasks:manage` (admin, manager).
 
+## Phase 7 — what was built
+
+- Event notifications grouped as transfers, access requests, audits, missing items, loaners,
+  assignments and returns, follow-up tasks, invitations (`notify::GROUPS`). Channels for a group:
+  the person's own choice (migration 016 `notification_preferences`), else the workspace default
+  (`settings.notifications`, set by admins), else every channel; applied inside `notify::send`, so
+  every event (including the overdue-loan job) follows it, together with the person's channel
+  settings and quiet hours from Phase 1.
+- New events: item assigned / returned (to the item's owner and its inventory's custodian), loan
+  returned (to whoever reserved it and the keepers; mentions damage), items missing after an audit
+  closes or is approved (custodian and full-access reviewers), invitation accepted (to the inviter).
+- SQL `member_sees_asset()`: notices about an item go only to people who may see it.
+- Routes: `GET / PUT /api/notification-settings/events`; `PATCH /api/settings {notifications}`.
+
 ## Test results
 
 Baseline on main (2026-10-27): `cargo build` ok, `scripts/test-http.sh` 87/87 pass.
@@ -174,8 +189,11 @@ counters and settings).
 Phase 6 (2026-10-29): fmt, clippy, 16 unit tests, 121/121 HTTP tests (3 new in
 `approval-center.test.js`).
 
+Phase 7 (2026-10-29): fmt, clippy, 16 unit tests, 125/125 HTTP tests (4 new in
+`business-notifications.test.js`).
+
 ## Next action
 
-Phase 7: business notifications (event notices for audits, transfers, loans, missing items,
-assignment, return, invitation; workspace defaults and per-user overrides; scoped); branch
-`phase-7-notifications` on phase 6.
+Phase 8: responsive UI pages for everything built in phases 1–7 (reminders, notification center and
+settings, inventories and transfers, loaners, audits with review, approval center, delegated
+access); branch `phase-8-ui` on phase 7.

@@ -964,6 +964,7 @@ pub async fn assign(
         .await?;
     let asset = find_asset(&mut tx, user.org_id, id).await?;
     tx.commit().await?;
+    crate::events::custody_changed(&state, user.org_id, id, user.id, true).await;
     Ok(Json(asset))
 }
 
@@ -991,6 +992,7 @@ pub async fn return_asset(
     .await?;
     let asset = find_asset(&mut tx, user.org_id, id).await?;
     tx.commit().await?;
+    crate::events::custody_changed(&state, user.org_id, id, user.id, false).await;
     Ok(Json(asset))
 }
 
