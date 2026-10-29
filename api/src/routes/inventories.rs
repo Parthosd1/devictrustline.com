@@ -22,9 +22,9 @@ pub const KINDS: &[&str] =
 
 /// Every inventory of workspace $1 with its full path ("Main IT Hub / Loaner Inventory") and depth.
 pub const TREE: &str = "WITH RECURSIVE tree AS (
-    SELECT id, name::text AS path, 0 AS depth FROM inventories WHERE org_id = $1 AND parent_id IS NULL
+    SELECT id, name::text AS path, ARRAY[lower(name)] AS sort, 0 AS depth FROM inventories WHERE org_id = $1 AND parent_id IS NULL
     UNION ALL
-    SELECT c.id, tree.path || ' / ' || c.name, tree.depth + 1
+    SELECT c.id, tree.path || ' / ' || c.name, tree.sort || lower(c.name), tree.depth + 1
       FROM inventories c JOIN tree ON c.parent_id = tree.id WHERE tree.depth < 20
   )";
 
@@ -84,7 +84,7 @@ pub async fn list(
         _ => "",
     };
     let mut db = state.pool.acquire().await?;
-    let items = Q::new(format!("{} WHERE i.org_id = $1 {filter} ORDER BY tree.path", select()))
+    let items = Q::new(format!("{} WHERE i.org_id = $1 {filter} ORDER BY tree.sort COLLATE \"C\"", select()))
         .bind(user.org_id)
         .all(&mut db)
         .await?;
