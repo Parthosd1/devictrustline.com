@@ -9,10 +9,14 @@ mod config;
 mod db;
 mod error;
 mod mail;
+mod notify;
+mod push;
 mod reminders;
 mod routes;
 mod scheduler;
+mod sms;
 mod tokens;
+mod user_reminders;
 mod validate;
 mod web;
 
@@ -70,12 +74,16 @@ async fn main() {
             println!("{}", serde_json::Value::Array(started));
         }
         "plans" | "set-plan-limit" | "set-workspace-plan" => plans_command(&pool, &command).await,
+        "vapid-keys" => {
+            let (private, public) = push::PushConfig::generate();
+            println!("VAPID_PRIVATE_KEY={private}\nVAPID_PUBLIC_KEY={public}");
+        }
         "run-jobs" => {
             let done = scheduler::run_jobs(&pool, &config).await.unwrap_or_else(|e| fail(format!("{e:?}")));
             println!("{done}");
         }
         other => fail(format!(
-            "Unknown command {other}. Use serve, migrate, create-admin, seed, run-scheduled-audits, run-jobs, plans, set-plan-limit, set-workspace-plan or healthcheck."
+            "Unknown command {other}. Use serve, migrate, create-admin, seed, run-scheduled-audits, run-jobs, plans, set-plan-limit, set-workspace-plan, vapid-keys or healthcheck."
         )),
     }
 }

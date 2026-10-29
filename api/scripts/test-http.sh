@@ -16,6 +16,9 @@ files_dir="$(mktemp -d)"
 oidc_port="${MOCK_OIDC_PORT:-4101}"
 MOCK_OIDC_PORT="$oidc_port" node tests/http/mock-oidc.js >/dev/null 2>&1 &
 oidc=$!
+# Browser push keys for this run only, and the development text-message adapter.
+vapid="$(./target/debug/devicetrustline vapid-keys)"
+export VAPID_PRIVATE_KEY="$(echo "$vapid" | sed -n 's/^VAPID_PRIVATE_KEY=//p')" VAPID_SUBJECT=mailto:test@example.com SMS_PROVIDER=log
 DATABASE_URL="$TEST_DATABASE_URL" PORT="$port" STATIC_DIR="$static_dir" ATTACHMENTS_DIR="$files_dir" ALLOW_SIGNUP=true \
   AUTH_RATE_LIMIT=1000 DISABLE_SCHEDULER=true MAIL_MODE=capture APP_URL=http://app.test \
   GOOGLE_CLIENT_ID=test-client GOOGLE_CLIENT_SECRET=test-secret GOOGLE_ISSUER="http://127.0.0.1:$oidc_port" ./target/debug/devicetrustline >"$log" 2>&1 &

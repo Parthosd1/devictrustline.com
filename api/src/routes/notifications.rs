@@ -11,7 +11,8 @@ use crate::auth::User;
 use crate::db::Q;
 use crate::error::{AppError, Result};
 use crate::reminders::DEADLINES;
-use crate::validate::Input;
+use crate::validate::{Input, Opt};
+use crate::web::Body;
 use crate::AppState;
 
 pub async fn list(
@@ -29,10 +30,12 @@ pub async fn list(
     // failed, or unavailable (no email provider set up). Null when no email was due.
     let items = Q::new(format!(
         r#"SELECT n.id, n.kind, n.title, n.body, n.asset_id AS "assetId", n.created_at AS "createdAt",
-                  n.read_at AS "readAt", CASE WHEN e.status = 'sending' THEN 'queued' ELSE e.status END AS "emailStatus"
+                  n.read_at AS "readAt", CASE WHEN e.status = 'sending' THEN 'queued' ELSE e.status END AS "emailStatus",
+                  n.link, n.user_reminder_id AS "reminderId", ({}) AS deliveries
              FROM notifications n LEFT JOIN email_outbox e ON e.id = n.email_id
             WHERE n.user_id = $1 AND n.org_id = $2 AND ($3 = false OR n.read_at IS NULL)
-            ORDER BY n.created_at DESC, n.id DESC LIMIT {limit}"#
+            ORDER BY n.created_at DESC, n.id DESC LIMIT {limit}"#,
+        crate::notify::DELIVERIES_SQL
     ))
     .bind(user.id)
     .bind(user.org_id)
@@ -175,4 +178,242 @@ pub async fn insights(State(state): State<AppState>, user: User) -> Result<Json<
         }
     }
     Ok(Json(json!({ "items": out })))
+}
+
+const SETTINGS_SELECT: &str = r#"
+  SELECT COALESCE(s.enabled, true) AS enabled, true AS "inApp", u.email_notifications AS email,
+         COALESCE(s.push, false) AS push, COALESCE(s.sms, false) AS sms, s.phone,
+         s.timezone, o.timezone AS "workspaceTimezone",
+         to_char(s.quiet_start, 'HH24:MI') AS "quietStart", to_char(s.quiet_end, 'HH24:MI') AS "quietEnd",
+         COALESCE(s.send_hour, 9) AS "sendHour", COALESCE(s.default_offsets, '{7,1}') AS "defaultOffsets",
+         (SELECT count(*)::int FROM push_subscriptions p WHERE p.user_id = u.id) AS "pushSubscriptions"
+    FROM users u JOIN organizations o ON o.id = $2
+    LEFT JOIN notification_settings s ON s.user_id = u.id
+   WHERE u.id = $1"#;
+
+async fn settings_of(db: &mut crate::db::Db, state: &AppState, user: &User) -> Result<Value> {
+    let mut row = Q::new(SETTINGS_SELECT).bind(user.id).bind(user.org_id).one(db).await?;
+    // What this server can actually deliver, so the app never offers a channel that cannot work.
+    row["available"] = json!({
+        "email": state.config.mail.available(),
+        "push": state.config.push.is_some(),
+        "sms": state.config.sms.available(),
+    });
+    row["pushPublicKey"] = json!(state.config.push.as_ref().map(|p| p.public_key.clone()));
+    Ok(row)
+}
+
+/// The signed-in person's notification preferences. They apply in every workspace.
+pub async fn get_settings(State(state): State<AppState>, user: User) -> Result<Json<Value>> {
+    let mut db = state.pool.acquire().await?;
+    Ok(Json(settings_of(&mut db, &state, &user).await?))
+}
+
+fn time_check(s: &str) -> Option<&'static str> {
+    chrono::NaiveTime::parse_from_str(s, "%H:%M").is_err().then_some("Use HH:MM, 24-hour")
+}
+
+fn phone_check(s: &str) -> Option<&'static str> {
+    let ok = s.starts_with('+')
+        && (8..=16).contains(&s.len())
+        && s[1..].bytes().all(|b| b.is_ascii_digit())
+        && !s[1..].starts_with('0');
+    (!ok).then_some("Use the international format, like +14155550123")
+}
+
+pub async fn update_settings(State(state): State<AppState>, user: User, Body(body): Body) -> Result<Json<Value>> {
+    let mut input = Input::body(&body);
+    let enabled = input.boolean("enabled", false).into_option();
+    let email = input.boolean("email", false).into_option();
+    let push = input.boolean("push", false).into_option();
+    let sms = input.boolean("sms", false).into_option();
+    let phone = input.str("phone", crate::validate::Str::text(20).check(phone_check));
+    let timezone = input.str("timezone", crate::validate::Str::text(64));
+    let quiet_start = input.str("quietStart", crate::validate::Str::text(5).check(time_check));
+    let quiet_end = input.str("quietEnd", crate::validate::Str::text(5).check(time_check));
+    let send_hour = input.raw_value("sendHour").map(|_| ());
+    let send_hour = send_hour.map(|_| input.int("sendHour", 0, 23, 9) as i16);
+    let offsets = input.raw_value("defaultOffsets").and_then(|raw| {
+        let list: Option<Vec<i32>> = raw
+            .as_array()
+            .and_then(|a| a.iter().map(|v| v.as_i64().filter(|n| (0..=365).contains(n)).map(|n| n as i32)).collect());
+        match list {
+            Some(mut l) if (1..=8).contains(&l.len()) => {
+                l.sort_unstable_by(|a, b| b.cmp(a));
+                l.dedup();
+                Some(l)
+            }
+            _ => {
+                input.fail("defaultOffsets", "List 1 to 8 whole numbers of days, from 0 to 365");
+                None
+            }
+        }
+    });
+    if quiet_start.is_present() != quiet_end.is_present()
+        || quiet_start.value().is_some() != quiet_end.value().is_some()
+    {
+        input.fail("quietEnd", "Set both the start and end of quiet hours, or clear both");
+    }
+    input.strict()?;
+    let mut tx = state.pool.begin().await?;
+    if let Opt::Val(tz) = &timezone {
+        let known: i64 =
+            Q::new("SELECT count(*) FROM pg_timezone_names WHERE name = $1").bind(tz).scalar(&mut tx).await?;
+        if known == 0 {
+            return Err(AppError::Invalid(vec![crate::validate::Issue::new(
+                "timezone",
+                "Unknown time zone. Use a name like America/New_York",
+            )]));
+        }
+    }
+    if let Some(email) = email {
+        Q::new("UPDATE users SET email_notifications = $2, updated_at = now() WHERE id = $1")
+            .bind(user.id)
+            .bind(email)
+            .run(&mut tx)
+            .await?;
+    }
+    Q::new("INSERT INTO notification_settings (user_id) VALUES ($1) ON CONFLICT DO NOTHING")
+        .bind(user.id)
+        .run(&mut tx)
+        .await?;
+    Q::new(
+        "UPDATE notification_settings SET
+           enabled = COALESCE($2, enabled), push = COALESCE($3, push), sms = COALESCE($4, sms),
+           phone = CASE WHEN $5 THEN $6 ELSE phone END,
+           timezone = CASE WHEN $7 THEN $8 ELSE timezone END,
+           quiet_start = CASE WHEN $9 THEN $10::time ELSE quiet_start END,
+           quiet_end = CASE WHEN $9 THEN $11::time ELSE quiet_end END,
+           send_hour = COALESCE($12, send_hour), default_offsets = COALESCE($13, default_offsets), updated_at = now()
+         WHERE user_id = $1",
+    )
+    .bind(user.id)
+    .bind(enabled)
+    .bind(push)
+    .bind(sms)
+    .bind(phone.is_present())
+    .bind(phone.into_option())
+    .bind(timezone.is_present())
+    .bind(timezone.into_option())
+    .bind(quiet_start.is_present())
+    .bind(quiet_start.into_option())
+    .bind(quiet_end.into_option())
+    .bind(send_hour)
+    .bind(offsets)
+    .run(&mut tx)
+    .await?;
+    let row: Value =
+        Q::new("SELECT sms, phone FROM notification_settings WHERE user_id = $1").bind(user.id).one(&mut tx).await?;
+    if row["sms"] == true && row["phone"].is_null() {
+        return Err(AppError::Invalid(vec![crate::validate::Issue::new(
+            "phone",
+            "Add a phone number to get text messages",
+        )]));
+    }
+    let out = settings_of(&mut tx, &state, &user).await?;
+    tx.commit().await?;
+    Ok(Json(out))
+}
+
+/// Registers this browser for push notifications (after the person allowed them in the browser).
+pub async fn subscribe_push(
+    State(state): State<AppState>,
+    user: User,
+    headers: axum::http::HeaderMap,
+    Body(body): Body,
+) -> Result<StatusCode> {
+    if state.config.push.is_none() {
+        return Err(AppError::coded(
+            503,
+            "push_unconfigured",
+            "Browser notifications are not set up on this server yet.",
+        ));
+    }
+    let mut input = Input::body(&body);
+    let endpoint = input.req("endpoint", crate::validate::Str::req(10, 1000));
+    let mut keys = (String::new(), String::new());
+    input.object("keys", |k| {
+        keys = (k.req("p256dh", crate::validate::Str::req(20, 200)), k.req("auth", crate::validate::Str::req(10, 100)));
+    });
+    input.raw_value("expirationTime");
+    input.strict()?;
+    if !endpoint.starts_with("https://") && !(endpoint.starts_with("http://127.0.0.1") && !state.config.is_production) {
+        return Err(AppError::new(400, "A push endpoint must be an https:// address"));
+    }
+    // Refuse keys that cannot be used, rather than failing on every later delivery.
+    crate::push::encrypt(&keys.0, &keys.1, b"check")
+        .map_err(|e| AppError::new(400, format!("Invalid subscription: {e}")))?;
+    let agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.chars().take(200).collect::<String>());
+    let mut tx = state.pool.begin().await?;
+    Q::new(
+        "INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
+                                              user_agent = EXCLUDED.user_agent",
+    )
+    .bind(user.id)
+    .bind(&endpoint)
+    .bind(&keys.0)
+    .bind(&keys.1)
+    .bind(agent)
+    .run(&mut tx)
+    .await?;
+    Q::new("INSERT INTO notification_settings (user_id, push) VALUES ($1, true) ON CONFLICT (user_id) DO UPDATE SET push = true")
+        .bind(user.id)
+        .run(&mut tx)
+        .await?;
+    tx.commit().await?;
+    Ok(StatusCode::CREATED)
+}
+
+pub async fn unsubscribe_push(State(state): State<AppState>, user: User, Body(body): Body) -> Result<StatusCode> {
+    let mut input = Input::body(&body);
+    let endpoint = input.str("endpoint", crate::validate::Str::req(1, 1000).optional()).into_option();
+    input.strict()?;
+    let mut db = state.pool.acquire().await?;
+    // Without an endpoint, every browser of this person is forgotten.
+    Q::new("DELETE FROM push_subscriptions WHERE user_id = $1 AND ($2::text IS NULL OR endpoint = $2)")
+        .bind(user.id)
+        .bind(endpoint)
+        .run(&mut db)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Sends a test notification to the signed-in person over every channel they turned on.
+pub async fn send_test(State(state): State<AppState>, user: User) -> Result<Json<Value>> {
+    let mut tx = state.pool.begin().await?;
+    let key = format!("test:{}:{}", user.id, crate::tokens::new_token());
+    let notice = crate::notify::Notice {
+        dedupe_key: Some(key),
+        ..crate::notify::Notice::new(
+            user.org_id,
+            user.id,
+            "test",
+            "Test notification",
+            "This is a test from DeviceTrustline. If you can read it here, this channel works.",
+        )
+    };
+    let id = crate::notify::send(&mut tx, &state.config, notice).await?;
+    tx.commit().await?;
+    let Some(id) = id else {
+        return Err(AppError::new(409, "Notifications are turned off in your notification settings"));
+    };
+    Ok(Json(json!({ "id": id })))
+}
+
+pub async fn delete(State(state): State<AppState>, user: User, Path(id): Path<i64>) -> Result<StatusCode> {
+    let mut db = state.pool.acquire().await?;
+    let n = Q::new("DELETE FROM notifications WHERE id = $1 AND user_id = $2 AND org_id = $3")
+        .bind(id)
+        .bind(user.id)
+        .bind(user.org_id)
+        .run(&mut db)
+        .await?;
+    if n == 0 {
+        return Err(AppError::not_found("Notification"));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }

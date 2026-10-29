@@ -13,6 +13,7 @@ pub mod plans;
 pub mod reports;
 pub mod settings;
 pub mod sites;
+pub mod user_reminders;
 pub mod users;
 pub mod warranties;
 pub mod work_orders;
@@ -69,6 +70,9 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/assets/import", post(import::import))
         .route("/api/assets", get(assets::list).post(assets::create))
         .route("/api/assets/lookup", get(assets::lookup))
+        .route("/api/assets/export", get(assets::export))
+        .route("/api/assets/{id}/archive", post(assets::archive))
+        .route("/api/assets/{id}/restore", post(assets::restore))
         .route("/api/assets/{id}", get(assets::get).patch(assets::update))
         .route("/api/assets/{id}/events", get(assets::events))
         .route("/api/assets/{id}/assign", post(assets::assign))
@@ -91,6 +95,17 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/notifications", get(notifications::list))
         .route("/api/notifications/read-all", post(notifications::read_all))
         .route("/api/notifications/{id}/read", post(notifications::read))
+        .route("/api/notifications/{id}", axum::routing::delete(notifications::delete))
+        .route("/api/notification-settings", get(notifications::get_settings).patch(notifications::update_settings))
+        .route("/api/notification-settings/test", post(notifications::send_test))
+        .route("/api/push/subscriptions", post(notifications::subscribe_push).delete(notifications::unsubscribe_push))
+        .route("/api/reminders", get(user_reminders::list).post(user_reminders::create))
+        .route(
+            "/api/reminders/{id}",
+            get(user_reminders::get).patch(user_reminders::update).delete(user_reminders::delete),
+        )
+        .route("/api/reminders/{id}/snooze", post(user_reminders::snooze))
+        .route("/api/reminders/{id}/complete", post(user_reminders::complete))
         .route("/api/deadlines", get(notifications::deadlines))
         .route("/api/insights", get(notifications::insights))
         .route("/api/plan", get(plans::get))
