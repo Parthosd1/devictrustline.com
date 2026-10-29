@@ -29,6 +29,18 @@ pub async fn send_all(state: &AppState, org: Uuid, events: Vec<Event>) {
     let result: Result<()> = async {
         let mut tx = state.pool.begin().await?;
         for e in &events {
+            // Nobody hears about an item outside their access.
+            if let Some(asset) = e.asset {
+                let sees: bool = Q::new("SELECT member_sees_asset($1, $2, $3)")
+                    .bind(org)
+                    .bind(e.user)
+                    .bind(asset)
+                    .scalar(&mut tx)
+                    .await?;
+                if !sees {
+                    continue;
+                }
+            }
             let notice = Notice {
                 asset_id: e.asset,
                 link: e.link.clone(),
@@ -316,5 +328,192 @@ pub async fn audit_decided(state: &AppState, org: Uuid, run: Uuid) {
     match result {
         Ok(events) => send_all(state, org, events).await,
         Err(e) => eprintln!("notify audit decision: {e:?}"),
+    }
+}
+
+/// The people who look after an item: its owner (a member) and its inventory's custodian.
+async fn keepers(state: &AppState, asset: Uuid) -> Result<Vec<Uuid>> {
+    let mut db = state.pool.acquire().await?;
+    Q::new(
+        "SELECT DISTINCT x.id FROM assets a LEFT JOIN inventories i ON i.id = a.inventory_id,
+                LATERAL (VALUES (a.owner_id), (i.custodian_id)) AS x(id)
+          WHERE a.id = $1 AND x.id IS NOT NULL",
+    )
+    .bind(asset)
+    .scalars(&mut db)
+    .await
+}
+
+/// An item was assigned to or returned from a person (outside a loan).
+pub async fn custody_changed(state: &AppState, org: Uuid, asset: Uuid, actor: Uuid, assigned: bool) {
+    let result: Result<Vec<Event>> = async {
+        let mut db = state.pool.acquire().await?;
+        let r = Q::new(
+            "SELECT a.name, a.asset_tag, p.name AS person, u.name AS actor FROM assets a
+               LEFT JOIN people p ON p.id = a.assigned_person_id JOIN users u ON u.id = $2 WHERE a.id = $1",
+        )
+        .bind(asset)
+        .bind(actor)
+        .one(&mut db)
+        .await?;
+        drop(db);
+        let name = r["name"].as_str().unwrap_or("");
+        let tag = r["asset_tag"].as_str().unwrap_or("");
+        let stamp = chrono::Utc::now().timestamp_millis();
+        Ok(keepers(state, asset)
+            .await?
+            .into_iter()
+            .filter(|u| *u != actor)
+            .map(|user| Event {
+                user,
+                kind: if assigned { "item_assigned" } else { "item_returned" },
+                title: if assigned { format!("Assigned: {name}") } else { format!("Returned: {name}") },
+                body: if assigned {
+                    format!(
+                        "{} assigned {name} ({tag}) to {}.",
+                        r["actor"].as_str().unwrap_or(""),
+                        r["person"].as_str().unwrap_or("")
+                    )
+                } else {
+                    format!("{} recorded {name} ({tag}) as returned.", r["actor"].as_str().unwrap_or(""))
+                },
+                asset: Some(asset),
+                link: Some(format!("/?asset={tag}")),
+                key: format!("custody:{asset}:{stamp}"),
+            })
+            .collect())
+    }
+    .await;
+    match result {
+        Ok(events) => send_all(state, org, events).await,
+        Err(e) => eprintln!("notify custody: {e:?}"),
+    }
+}
+
+/// A loaner came back: tell whoever reserved it and the item's keepers.
+pub async fn loan_returned(state: &AppState, org: Uuid, loan: Uuid, actor: Uuid) {
+    let result: Result<Vec<Event>> = async {
+        let mut db = state.pool.acquire().await?;
+        let r = Q::new(
+            "SELECT l.number, l.asset_id, l.reserved_by, l.damage_reported, a.name, a.asset_tag, p.name AS person
+               FROM loans l JOIN assets a ON a.id = l.asset_id JOIN people p ON p.id = l.person_id WHERE l.id = $1",
+        )
+        .bind(loan)
+        .one(&mut db)
+        .await?;
+        drop(db);
+        let asset = uuid_of(&r["asset_id"]).unwrap();
+        let mut to = keepers(state, asset).await?;
+        to.extend(uuid_of(&r["reserved_by"]));
+        to.sort();
+        to.dedup();
+        let damaged = if r["damage_reported"] == true { " It was reported damaged." } else { "" };
+        Ok(to
+            .into_iter()
+            .filter(|u| *u != actor)
+            .map(|user| Event {
+                user,
+                kind: "loan_returned",
+                title: format!(
+                    "Loan {} returned: {}",
+                    r["number"].as_str().unwrap_or(""),
+                    r["name"].as_str().unwrap_or("")
+                ),
+                body: format!(
+                    "{} returned {} ({}). It needs an inspection before it is lent again.{damaged}",
+                    r["person"].as_str().unwrap_or(""),
+                    r["name"].as_str().unwrap_or(""),
+                    r["asset_tag"].as_str().unwrap_or("")
+                ),
+                asset: Some(asset),
+                link: Some("/?page=Loaners".into()),
+                key: format!("loan-returned:{loan}"),
+            })
+            .collect())
+    }
+    .await;
+    match result {
+        Ok(events) => send_all(state, org, events).await,
+        Err(e) => eprintln!("notify loan returned: {e:?}"),
+    }
+}
+
+/// A finished audit left items missing: tell the audit inventory's custodian and the managers and
+/// admins with access to everything.
+pub async fn audit_missing(state: &AppState, org: Uuid, run: Uuid, actor: Uuid) {
+    let result: Result<Vec<Event>> = async {
+        let mut db = state.pool.acquire().await?;
+        let r = Q::new(
+            "SELECT r.name, i.custodian_id,
+                    (SELECT count(*) FROM audit_items x WHERE x.run_id = r.id AND x.result = 'missing') AS missing
+               FROM audit_runs r LEFT JOIN inventories i ON i.id = r.inventory_id WHERE r.id = $1",
+        )
+        .bind(run)
+        .one(&mut db)
+        .await?;
+        let missing = r["missing"].as_i64().unwrap_or(0);
+        if missing == 0 {
+            return Ok(vec![]);
+        }
+        let mut to: Vec<Uuid> = Q::new(
+            "SELECT user_id FROM memberships WHERE org_id = $1 AND is_active AND access_scope = 'all' AND user_id = ANY($2)",
+        )
+        .bind(org)
+        .bind(members_with(state, org, "audits:approve").await?)
+        .scalars(&mut db)
+        .await?;
+        to.extend(uuid_of(&r["custodian_id"]));
+        to.sort();
+        to.dedup();
+        Ok(to
+            .into_iter()
+            .filter(|u| *u != actor)
+            .map(|user| Event {
+                user,
+                kind: "audit_missing",
+                title: format!("{missing} missing after {}", r["name"].as_str().unwrap_or("")),
+                body: format!("{} finished with {missing} item(s) not found.", r["name"].as_str().unwrap_or("")),
+                asset: None,
+                link: Some("/?page=Approvals".into()),
+                key: format!("audit-missing:{run}"),
+            })
+            .collect())
+    }
+    .await;
+    match result {
+        Ok(events) => send_all(state, org, events).await,
+        Err(e) => eprintln!("notify audit missing: {e:?}"),
+    }
+}
+
+/// Tells whoever sent an invitation that it was accepted.
+pub async fn invitation_accepted(state: &AppState, org: Uuid, inviter: Option<Uuid>, member: Uuid) {
+    let Some(inviter) = inviter.filter(|i| *i != member) else { return };
+    let result: Result<Vec<Event>> = async {
+        let mut db = state.pool.acquire().await?;
+        let r = Q::new("SELECT u.name, u.email::text AS email, m.role FROM users u JOIN memberships m ON m.user_id = u.id AND m.org_id = $2 WHERE u.id = $1")
+            .bind(member)
+            .bind(org)
+            .one(&mut db)
+            .await?;
+        Ok(vec![Event {
+            user: inviter,
+            kind: "invitation_accepted",
+            title: format!("{} joined", r["name"].as_str().unwrap_or("")),
+            body: format!(
+                "{} ({}) accepted your invitation and joined as {}.",
+                r["name"].as_str().unwrap_or(""),
+                r["email"].as_str().unwrap_or(""),
+                r["role"].as_str().unwrap_or("")
+            ),
+            asset: None,
+            link: Some("/?page=Users".into()),
+            key: format!("invitation-accepted:{org}:{member}"),
+        }])
+    }
+    .await;
+    match result {
+        Ok(events) => send_all(state, org, events).await,
+        Err(e) => eprintln!("notify invitation accepted: {e:?}"),
     }
 }

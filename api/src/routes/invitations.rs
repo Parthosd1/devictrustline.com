@@ -252,6 +252,7 @@ pub async fn accept(State(state): State<AppState>, parts: Parts, Body(body): Bod
     access.apply(&mut tx, org, user_id, uuid_of(&invite["created_by"])).await?;
     let res = start_session(&state, &mut tx, user_id, org, StatusCode::OK).await?;
     tx.commit().await?;
+    crate::events::invitation_accepted(&state, org, uuid_of(&invite["created_by"]), user_id).await;
     Ok(res)
 }
 

@@ -16,7 +16,14 @@ pub fn with_defaults(settings: &Value) -> Value {
     for (_, key, days) in DEFAULT_DAYS {
         reminders[*key] = json!(days);
     }
-    let mut out = json!({ "autoAudits": { "weekly": false, "monthly": false, "quarterly": false, "annual": false }, "reminders": reminders, "currency": null });
+    let mut notifications = json!({});
+    for (group, _, _) in crate::notify::GROUPS {
+        notifications[*group] = crate::notify::Channels::ALL.to_json();
+    }
+    let mut out = json!({
+        "autoAudits": { "weekly": false, "monthly": false, "quarterly": false, "annual": false },
+        "reminders": reminders, "currency": null, "notifications": notifications,
+    });
     if let Some(map) = settings.as_object() {
         for (k, v) in map {
             match (out.get_mut(k), v.as_object()) {
@@ -86,6 +93,28 @@ pub async fn update(State(state): State<AppState>, user: User, Body(body): Body)
             }
         }
     });
+    // Workspace defaults for event notifications, by group.
+    let mut notifications = vec![];
+    if let Some(raw) = input.raw_value("notifications") {
+        match raw.as_object() {
+            Some(map) => {
+                for (group, v) in map {
+                    match (
+                        crate::notify::GROUPS.iter().any(|(g, _, _)| g == group),
+                        crate::notify::Channels::from_json(v),
+                    ) {
+                        (true, Some(c)) => notifications.push((group.clone(), c)),
+                        (false, _) => input.fail(&format!("notifications.{group}"), "Unknown notification group"),
+                        (true, None) => input.fail(
+                            &format!("notifications.{group}"),
+                            "Give inApp, email, push and sms as true or false",
+                        ),
+                    }
+                }
+            }
+            None => input.fail("notifications", "Must be an object of groups"),
+        }
+    }
     let timezone = input.str("timezone", Str::req(1, 64).optional()).into_option();
     let currency = input.str("currency", Str::text(3)).into_option();
     if currency.as_ref().is_some_and(|c| c.len() != 3 || !c.chars().all(|ch| ch.is_ascii_alphabetic())) {
@@ -112,6 +141,9 @@ pub async fn update(State(state): State<AppState>, user: User, Body(body): Body)
     }
     for (k, v) in reminders {
         next["reminders"][k] = v;
+    }
+    for (group, c) in notifications {
+        next["notifications"][group] = c.to_json();
     }
     if let Some(c) = currency {
         next["currency"] = json!(c.to_uppercase());

@@ -71,6 +71,59 @@ pub struct Channels {
 
 impl Channels {
     pub const ALL: Channels = Channels { in_app: true, email: true, push: true, sms: true };
+
+    fn and(self, o: Channels) -> Channels {
+        Channels {
+            in_app: self.in_app && o.in_app,
+            email: self.email && o.email,
+            push: self.push && o.push,
+            sms: self.sms && o.sms,
+        }
+    }
+
+    pub fn from_json(v: &Value) -> Option<Channels> {
+        Some(Channels {
+            in_app: v.get("inApp")?.as_bool()?,
+            email: v.get("email")?.as_bool()?,
+            push: v.get("push")?.as_bool()?,
+            sms: v.get("sms")?.as_bool()?,
+        })
+    }
+
+    pub fn to_json(self) -> Value {
+        serde_json::json!({ "inApp": self.in_app, "email": self.email, "push": self.push, "sms": self.sms })
+    }
+}
+
+/// Groups of workspace event notifications people can tune, and the kinds in each.
+pub const GROUPS: &[(&str, &str, &[&str])] = &[
+    ("transfers", "Transfers", &["transfer_requested", "transfer_completed", "transfer_rejected"]),
+    ("access", "Access requests", &["access_requested", "access_approved", "access_rejected"]),
+    ("audits", "Audits", &["audit_submitted", "audit_approved", "audit_rejected"]),
+    ("missing", "Missing items", &["audit_missing"]),
+    ("loans", "Loaners", &["loan_overdue", "loan_returned"]),
+    ("assignments", "Assignments and returns", &["item_assigned", "item_returned"]),
+    ("tasks", "Follow-up tasks", &["task_assigned"]),
+    ("invitations", "Invitations", &["invitation_accepted"]),
+];
+
+pub fn group_of(kind: &str) -> Option<&'static str> {
+    GROUPS.iter().find(|(_, _, kinds)| kinds.contains(&kind)).map(|(g, _, _)| *g)
+}
+
+/// The channels a person gets for a group: their own choice, else the workspace default, else all.
+pub async fn group_channels(db: &mut Db, org: Uuid, user: Uuid, group: &str) -> Result<Channels> {
+    let row = Q::new(
+        r#"SELECT (SELECT json_build_object('inApp', p.in_app, 'email', p.email, 'push', p.push, 'sms', p.sms)
+                     FROM notification_preferences p WHERE p.user_id = $2 AND p.org_id = $1 AND p.grp = $3) AS own,
+                  (SELECT o.settings->'notifications'->$3 FROM organizations o WHERE o.id = $1) AS workspace"#,
+    )
+    .bind(org)
+    .bind(user)
+    .bind(group)
+    .one(&mut *db)
+    .await?;
+    Ok(Channels::from_json(&row["own"]).or_else(|| Channels::from_json(&row["workspace"])).unwrap_or(Channels::ALL))
 }
 
 async fn log(
@@ -112,7 +165,10 @@ pub async fn send(db: &mut Db, config: &Config, n: Notice<'_>) -> Result<Option<
     .opt(&mut *db)
     .await?;
     let Some(p) = prefs else { return Ok(None) };
-    let allowed = n.channels.unwrap_or(Channels::ALL);
+    let mut allowed = n.channels.unwrap_or(Channels::ALL);
+    if let Some(group) = group_of(n.kind) {
+        allowed = allowed.and(group_channels(&mut *db, n.org_id, n.user_id, group).await?);
+    }
     if p["enabled"] != true || p["is_active"] != true || !allowed.in_app {
         return Ok(None);
     }

@@ -480,6 +480,7 @@ pub async fn return_loan(
     event(&mut tx, &user, id, "returned", json!({ "condition": condition, "damaged": damaged, "note": note })).await?;
     let loan = find(&mut tx, &user, id).await?;
     tx.commit().await?;
+    crate::events::loan_returned(&state, user.org_id, id, user.id).await;
     Ok(Json(loan))
 }
 

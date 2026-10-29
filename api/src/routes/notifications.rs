@@ -419,3 +419,89 @@ pub async fn delete(State(state): State<AppState>, user: User, Path(id): Path<i6
     }
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// Workspace event notifications by group: the workspace default, this person's own choice (if
+/// any) and what applies.
+pub async fn get_event_preferences(State(state): State<AppState>, user: User) -> Result<Json<Value>> {
+    let mut db = state.pool.acquire().await?;
+    let mut groups = vec![];
+    for (group, label, kinds) in crate::notify::GROUPS {
+        let row = Q::new(
+            r#"SELECT (SELECT json_build_object('inApp', p.in_app, 'email', p.email, 'push', p.push, 'sms', p.sms)
+                         FROM notification_preferences p WHERE p.user_id = $2 AND p.org_id = $1 AND p.grp = $3) AS own,
+                      (SELECT o.settings->'notifications'->$3 FROM organizations o WHERE o.id = $1) AS workspace"#,
+        )
+        .bind(user.org_id)
+        .bind(user.id)
+        .bind(*group)
+        .one(&mut db)
+        .await?;
+        let workspace = crate::notify::Channels::from_json(&row["workspace"]).unwrap_or(crate::notify::Channels::ALL);
+        let own = crate::notify::Channels::from_json(&row["own"]);
+        groups.push(json!({
+            "group": group, "label": label, "kinds": kinds,
+            "workspace": workspace.to_json(), "own": own.map(|c| c.to_json()),
+            "effective": own.unwrap_or(workspace).to_json(),
+        }));
+    }
+    Ok(Json(json!({ "groups": groups })))
+}
+
+/// Sets this person's choices: `{ "<group>": {inApp, email, push, sms} | null }`; null returns
+/// the group to the workspace default.
+pub async fn update_event_preferences(
+    State(state): State<AppState>,
+    user: User,
+    Body(body): Body,
+) -> Result<Json<Value>> {
+    let Some(map) = body.as_object() else {
+        return Err(AppError::new(400, "Send an object of groups"));
+    };
+    let mut changes = vec![];
+    for (group, value) in map {
+        if crate::notify::GROUPS.iter().all(|(g, _, _)| g != group) {
+            return Err(AppError::Invalid(vec![crate::validate::Issue::new(group, "Unknown notification group")]));
+        }
+        let channels = match value {
+            Value::Null => None,
+            v => Some(crate::notify::Channels::from_json(v).ok_or_else(|| {
+                AppError::Invalid(vec![crate::validate::Issue::new(
+                    group,
+                    "Give inApp, email, push and sms as true or false",
+                )])
+            })?),
+        };
+        changes.push((group.clone(), channels));
+    }
+    let mut tx = state.pool.begin().await?;
+    for (group, channels) in changes {
+        match channels {
+            None => {
+                Q::new("DELETE FROM notification_preferences WHERE user_id = $1 AND org_id = $2 AND grp = $3")
+                    .bind(user.id)
+                    .bind(user.org_id)
+                    .bind(&group)
+                    .run(&mut tx)
+                    .await?;
+            }
+            Some(c) => {
+                Q::new(
+                    "INSERT INTO notification_preferences (user_id, org_id, grp, in_app, email, push, sms)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     ON CONFLICT (user_id, org_id, grp) DO UPDATE SET in_app = $4, email = $5, push = $6, sms = $7, updated_at = now()",
+                )
+                .bind(user.id)
+                .bind(user.org_id)
+                .bind(&group)
+                .bind(c.in_app)
+                .bind(c.email)
+                .bind(c.push)
+                .bind(c.sms)
+                .run(&mut tx)
+                .await?;
+            }
+        }
+    }
+    tx.commit().await?;
+    get_event_preferences(State(state), user).await
+}

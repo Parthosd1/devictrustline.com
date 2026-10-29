@@ -616,6 +616,7 @@ pub async fn close(State(state): State<AppState>, user: User, Path(id): Path<Str
     review(&mut tx, org, id, "closed", user.id, None).await?;
     let run = find_run(&mut tx, org, id, false).await?;
     tx.commit().await?;
+    crate::events::audit_missing(&state, org, id, user.id).await;
     Ok(Json(run))
 }
 
@@ -687,6 +688,9 @@ async fn decide(state: AppState, user: User, id: String, body: Value, approve: b
     let run = find_run(&mut tx, user.org_id, id, false).await?;
     tx.commit().await?;
     crate::events::audit_decided(&state, user.org_id, id).await;
+    if approve {
+        crate::events::audit_missing(&state, user.org_id, id, user.id).await;
+    }
     Ok(Json(run))
 }
 
