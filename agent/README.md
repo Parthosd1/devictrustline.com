@@ -14,8 +14,8 @@ moved.
 
 | Platform | Source | Finds |
 | --- | --- | --- |
-| Windows 10/11 | PowerShell `Get-CimInstance` (CIM/WMI, built in) | the computer and its serial, monitors (with EDID serials), disks, printers, USB cameras, mice, keyboards, phones, USB network adapters and docks |
-| Linux | sysfs (`/sys/class/dmi`, `/sys/bus/usb`) | the computer (serial needs root), USB devices |
+| Windows 10/11 | PowerShell `Get-CimInstance` (CIM/WMI, built in) | the computer and its serial, its CPU (model, cores, threads, clock), memory (total and each module), storage (disk sizes, drives and free space), Windows edition, version, build and architecture, and built-in network adapters (with MAC addresses); monitors (with EDID serials), disks, printers, USB cameras, mice, keyboards, phones, USB network adapters and docks |
+| Linux | sysfs and procfs (`/sys/class/dmi`, `/sys/bus/usb`, `/sys/block`, `/proc/cpuinfo`, `/proc/meminfo`, `/etc/os-release`) | the computer (serial needs root) with CPU, memory, disk size and OS; USB devices |
 | macOS | `system_profiler -json` | the Mac and its serial, external displays, USB devices |
 
 Windows is the first supported platform. The Linux and macOS readers work but are simpler.
@@ -62,5 +62,22 @@ CI builds the Windows executable on every push and keeps it as the `devicetrustl
 | Simulated | Unit tests parse recorded Windows CIM output, macOS `system_profiler` output and a fake sysfs tree (`cargo test`) | passing |
 | Real program, real server | The HTTP test suite runs the Linux build against the API: pair, scan, report, local pause, disconnect | passing |
 | Compiled for Windows | `x86_64-pc-windows-gnu` release build and clippy for that target | passing |
-| On a physical Windows PC | Running the `.exe`, the PowerShell query, `install` / `uninstall` | **not yet verified** — needs a Windows 10/11 machine |
+| On a physical Windows PC | Running the `.exe`, the PowerShell query (including the CPU, memory, drive, OS and adapter classes), `install` / `uninstall` | **not yet verified** — needs a Windows 10/11 machine; steps below |
 | macOS | Running on a Mac | **not yet verified** |
+
+## Checking it on a real Windows PC
+
+Nobody has run this on physical Windows hardware yet. Before relying on it, on a Windows 10 or 11
+PC (ideally one desktop with a dock and external monitor, and one laptop):
+
+1. Download `devicetrustline-agent.exe` from the CI artifact `devicetrustline-agent-windows-x64`.
+2. In PowerShell, paste the script from `src/collect/windows.rs` (`SCRIPT`) and check it prints
+   JSON with `system`, `bios`, `cpu`, `memory`, `volumes`, `os` and `adapters` filled in.
+3. As administrator: `devicetrustline-agent pair <server> <code>`, then `devicetrustline-agent scan`
+   (prints what would be sent) and `devicetrustline-agent report`.
+4. In the web app, Devices: the computer shows its processor, memory, storage, Windows version and
+   network adapters; monitors, the dock and USB devices appear with serials only where Windows
+   reported them.
+5. `devicetrustline-agent install`, wait for the hourly task (or run it from Task Scheduler), then
+   `devicetrustline-agent uninstall`, and confirm the task is gone.
+6. Unplug the monitor or dock, report again, and check the device is shown as not seen.

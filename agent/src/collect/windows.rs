@@ -16,7 +16,11 @@ $out = [ordered]@{
   disks     = Get-CimInstance Win32_DiskDrive | Select-Object Model, SerialNumber, InterfaceType, MediaType, PNPDeviceID, Size
   printers  = Get-CimInstance Win32_Printer | Select-Object Name, DriverName, PortName, Local, Network, PNPDeviceID
   pnp       = Get-CimInstance Win32_PnPEntity -Filter "Present = TRUE" | Where-Object { $_.PNPClass -in @('Mouse','Keyboard','Camera','Image','Biometric','SmartCardReader','WPD','Bluetooth','USB') } | Select-Object Name, Manufacturer, PNPClass, PNPDeviceID, Service
-  adapters  = Get-CimInstance Win32_NetworkAdapter -Filter "PhysicalAdapter = TRUE" | Select-Object Name, Manufacturer, MACAddress, PNPDeviceID, AdapterType
+  adapters  = Get-CimInstance Win32_NetworkAdapter -Filter "PhysicalAdapter = TRUE" | Select-Object Name, Manufacturer, MACAddress, PNPDeviceID, AdapterType, Speed
+  os        = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture
+  cpu       = Get-CimInstance Win32_Processor | Select-Object Name, Manufacturer, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed
+  memory    = Get-CimInstance Win32_PhysicalMemory | Select-Object Capacity, Manufacturer, PartNumber, Speed, DeviceLocator
+  volumes   = Get-CimInstance Win32_LogicalDisk -Filter "DriveType = 3" | Select-Object DeviceID, FileSystem, Size, FreeSpace
 }
 $out | ConvertTo-Json -Depth 4 -Compress
 "#;
@@ -71,6 +75,130 @@ fn chassis_class(types: &Value) -> &'static str {
     }
 }
 
+const GB: f64 = 1_073_741_824.0;
+/// Bytes as GiB with one decimal, which is how Windows itself shows memory and drive sizes.
+fn gib(bytes: f64) -> Value {
+    json!((bytes / GB * 10.0).round() / 10.0)
+}
+
+/// CPU, memory, storage, operating system and built-in network adapters, recorded on the computer.
+/// Only what Windows reports is kept; anything missing is left out rather than guessed.
+fn hardware(v: &Value, d: &mut Device) {
+    let cpus = list(&v["cpu"]);
+    if let Some(cpu) = cpus.first() {
+        let mut c = serde_json::Map::new();
+        if let Some(name) = text(&cpu["Name"]) {
+            c.insert("name".into(), json!(name));
+        }
+        if let Some(m) = text(&cpu["Manufacturer"]) {
+            c.insert("manufacturer".into(), json!(m));
+        }
+        let sum = |key: &str| cpus.iter().filter_map(|p| p[key].as_u64()).sum::<u64>();
+        if sum("NumberOfCores") > 0 {
+            c.insert("cores".into(), json!(sum("NumberOfCores")));
+        }
+        if sum("NumberOfLogicalProcessors") > 0 {
+            c.insert("threads".into(), json!(sum("NumberOfLogicalProcessors")));
+        }
+        if let Some(mhz) = cpu["MaxClockSpeed"].as_u64() {
+            c.insert("mhz".into(), json!(mhz));
+        }
+        if cpus.len() > 1 {
+            c.insert("sockets".into(), json!(cpus.len()));
+        }
+        d.details.insert("cpu".into(), Value::Object(c));
+    }
+    let modules = list(&v["memory"]);
+    let bytes: u64 = modules.iter().filter_map(|m| m["Capacity"].as_u64()).sum();
+    if bytes > 0 {
+        let slots: Vec<Value> = modules
+            .iter()
+            .map(|m| {
+                let mut s = serde_json::Map::new();
+                if let Some(c) = m["Capacity"].as_u64() {
+                    s.insert("sizeGb".into(), gib(c as f64));
+                }
+                for (k, key) in
+                    [("slot", "DeviceLocator"), ("manufacturer", "Manufacturer"), ("partNumber", "PartNumber")]
+                {
+                    if let Some(t) = text(&m[key]) {
+                        s.insert(k.into(), json!(t));
+                    }
+                }
+                if let Some(mhz) = m["Speed"].as_u64() {
+                    s.insert("mhz".into(), json!(mhz));
+                }
+                Value::Object(s)
+            })
+            .collect();
+        d.details.insert("memory".into(), json!({ "totalGb": gib(bytes as f64), "modules": slots }));
+    }
+    let volumes: Vec<Value> = list(&v["volumes"])
+        .iter()
+        .filter_map(|vol| {
+            let size = vol["Size"].as_f64()?;
+            let mut s = serde_json::Map::new();
+            s.insert("drive".into(), json!(text(&vol["DeviceID"])?));
+            s.insert("sizeGb".into(), gib(size));
+            if let Some(free) = vol["FreeSpace"].as_f64() {
+                s.insert("freeGb".into(), gib(free));
+            }
+            if let Some(fs) = text(&vol["FileSystem"]) {
+                s.insert("fileSystem".into(), json!(fs));
+            }
+            Some(Value::Object(s))
+        })
+        .collect();
+    let disk_bytes: u64 = list(&v["disks"]).iter().filter_map(|x| x["Size"].as_u64()).sum();
+    if disk_bytes > 0 || !volumes.is_empty() {
+        let mut s = serde_json::Map::new();
+        if disk_bytes > 0 {
+            s.insert("totalGb".into(), json!(disk_bytes / 1_000_000_000));
+        }
+        let free: f64 = volumes.iter().filter_map(|x| x["freeGb"].as_f64()).sum();
+        if !volumes.is_empty() {
+            s.insert("freeGb".into(), json!((free * 10.0).round() / 10.0));
+            s.insert("volumes".into(), json!(volumes));
+        }
+        d.details.insert("storage".into(), Value::Object(s));
+    }
+    if let Some(os) = list(&v["os"]).first() {
+        let mut s = serde_json::Map::new();
+        for (k, key) in
+            [("name", "Caption"), ("version", "Version"), ("build", "BuildNumber"), ("architecture", "OSArchitecture")]
+        {
+            if let Some(t) = text(&os[key]) {
+                s.insert(k.into(), json!(t));
+            }
+        }
+        if !s.is_empty() {
+            d.details.insert("os".into(), Value::Object(s));
+        }
+    }
+    // Adapters built into the computer (USB ones are reported as their own devices).
+    let nics: Vec<Value> = list(&v["adapters"])
+        .iter()
+        .filter(|a| text(&a["PNPDeviceID"]).is_some_and(|id| !id.to_uppercase().starts_with("USB\\")))
+        .filter_map(|a| {
+            let mut s = serde_json::Map::new();
+            s.insert("name".into(), json!(text(&a["Name"])?));
+            if let Some(mac) = text(&a["MACAddress"]) {
+                s.insert("mac".into(), json!(mac));
+            }
+            if let Some(kind) = text(&a["AdapterType"]) {
+                s.insert("type".into(), json!(kind));
+            }
+            if let Some(bps) = a["Speed"].as_u64().or_else(|| text(&a["Speed"]).and_then(|t| t.parse().ok())) {
+                s.insert("mbps".into(), json!(bps / 1_000_000));
+            }
+            Some(Value::Object(s))
+        })
+        .collect();
+    if !nics.is_empty() {
+        d.details.insert("network".into(), json!(nics));
+    }
+}
+
 const VIRTUAL_PRINTERS: &[&str] =
     &["Microsoft Print to PDF", "Microsoft XPS Document Writer", "OneNote", "Fax", "Send To OneNote"];
 
@@ -86,6 +214,7 @@ pub fn parse(v: &Value) -> Vec<Device> {
             "formFactor".into(),
             json!(chassis_class(&list(&v["enclosure"]).first().cloned().unwrap_or_default()["ChassisTypes"])),
         );
+        hardware(v, &mut d);
         out.push(d);
     }
     for m in list(&v["monitors"]) {
@@ -188,8 +317,18 @@ mod tests {
                 { "Name": "Logitech BRIO", "PNPClass": "Camera", "PNPDeviceID": "USB\\VID_046D&PID_085E\\2F5A3B1C", "Manufacturer": "Logitech" },
                 { "Name": "Generic USB Hub", "PNPClass": "USB", "PNPDeviceID": "USB\\VID_05E3&PID_0610\\5&1" }
             ],
+            "os": { "Caption": "Microsoft Windows 11 Pro", "Version": "10.0.22631", "BuildNumber": "22631", "OSArchitecture": "64-bit" },
+            "cpu": { "Name": "13th Gen Intel(R) Core(TM) i7-13700 ", "Manufacturer": "GenuineIntel", "NumberOfCores": 16, "NumberOfLogicalProcessors": 24, "MaxClockSpeed": 2100 },
+            "memory": [
+                { "Capacity": 17179869184u64, "Manufacturer": "Samsung", "PartNumber": "M425R2GA3BB0-CQKOD ", "Speed": 4800, "DeviceLocator": "DIMM1" },
+                { "Capacity": 17179869184u64, "Manufacturer": "Samsung", "Speed": 4800, "DeviceLocator": "DIMM2" }
+            ],
+            "volumes": [
+                { "DeviceID": "C:", "FileSystem": "NTFS", "Size": 499431501824u64, "FreeSpace": 214748364800u64 },
+                { "DeviceID": "D:", "Size": null }
+            ],
             "adapters": [
-                { "Name": "Intel Ethernet", "PNPDeviceID": "PCI\\VEN_8086", "MACAddress": "AA" },
+                { "Name": "Intel Ethernet", "PNPDeviceID": "PCI\\VEN_8086", "MACAddress": "AA", "AdapterType": "Ethernet 802.3", "Speed": "1000000000" },
                 { "Name": "Dell USB-C Dock WD19", "PNPDeviceID": "USB\\VID_0BDA&PID_8153\\301000001", "MACAddress": "BB:CC" }
             ]
         });
@@ -198,6 +337,22 @@ mod tests {
         let pc = by("computer");
         assert_eq!((pc.name.as_str(), pc.serial.as_deref(), pc.class), ("FRONTDESK-01", Some("7XK2Q93"), "computer"));
         assert_eq!(pc.details["formFactor"], "desktop");
+        assert_eq!(
+            pc.details["cpu"],
+            json!({ "name": "13th Gen Intel(R) Core(TM) i7-13700", "manufacturer": "GenuineIntel", "cores": 16, "threads": 24, "mhz": 2100 })
+        );
+        assert_eq!(pc.details["memory"]["totalGb"], 32.0);
+        assert_eq!(pc.details["memory"]["modules"][0]["partNumber"], "M425R2GA3BB0-CQKOD");
+        assert_eq!(pc.details["memory"]["modules"][1].get("partNumber"), None, "missing values are left out");
+        assert_eq!(pc.details["storage"]["totalGb"], 500);
+        assert_eq!(pc.details["storage"]["freeGb"], 200.0);
+        assert_eq!(pc.details["storage"]["volumes"].as_array().unwrap().len(), 1, "a drive without a size is skipped");
+        assert_eq!(pc.details["os"]["name"], "Microsoft Windows 11 Pro");
+        assert_eq!(pc.details["os"]["build"], "22631");
+        assert_eq!(
+            pc.details["network"],
+            json!([{ "name": "Intel Ethernet", "mac": "AA", "type": "Ethernet 802.3", "mbps": 1000 }])
+        );
         let monitor = by("DISPLAY\\DELA0F5\\5&1_0");
         assert_eq!((monitor.manufacturer.as_deref(), monitor.serial.as_deref()), (Some("DEL"), Some("CN0ABC123")));
         // The server decides "0" identifies nothing; the agent reports what Windows said.
