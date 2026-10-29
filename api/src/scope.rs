@@ -39,6 +39,11 @@ const OBJECTS: &[(&str, &str, &str)] = &[
         "SELECT unnest(ARRAY[t.to_inventory_id, t.from_inventory_id]) FROM inventory_transfers t WHERE t.id = $1 AND t.org_id = $2",
     ),
     ("inventories", "Inventory", "SELECT id FROM inventories WHERE id = $1 AND org_id = $2"),
+    (
+        "loans",
+        "Loan",
+        "SELECT a.inventory_id FROM loans l JOIN assets a ON a.id = l.asset_id WHERE l.id = $1 AND l.org_id = $2",
+    ),
 ];
 
 /// Workspace-wide areas closed to people with limited access (reads and writes).

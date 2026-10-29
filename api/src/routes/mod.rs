@@ -9,6 +9,7 @@ pub mod google;
 pub mod import;
 pub mod inventories;
 pub mod invitations;
+pub mod loans;
 pub mod notifications;
 pub mod people;
 pub mod plans;
@@ -132,6 +133,15 @@ pub fn api(state: &AppState) -> Router<AppState> {
         .route("/api/transfers/{id}/approve", post(transfers::approve))
         .route("/api/transfers/{id}/reject", post(transfers::reject))
         .route("/api/transfers/{id}/cancel", post(transfers::cancel))
+        .route("/api/loans", get(loans::list).post(loans::create))
+        .route("/api/loans/export", get(loans::export))
+        .route("/api/loans/{id}", get(loans::get))
+        .route("/api/loans/{id}/deploy", post(loans::deploy))
+        .route("/api/loans/{id}/extend", post(loans::extend))
+        .route("/api/loans/{id}/return", post(loans::return_loan))
+        .route("/api/loans/{id}/inspect", post(loans::inspect))
+        .route("/api/loans/{id}/cancel", post(loans::cancel))
+        .route("/api/loans/{id}/lost", post(loans::lost))
         .route("/api/access-requests", get(access_requests::list).post(access_requests::create))
         .route("/api/access-requests/{id}/approve", post(access_requests::approve))
         .route("/api/access-requests/{id}/reject", post(access_requests::reject))
